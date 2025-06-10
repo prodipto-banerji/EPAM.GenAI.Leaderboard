@@ -1,0 +1,147 @@
+/* Dashboard Styling */
+.dashboard {
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 20px;
+  background: linear-gradient(to right, #4facfe, #00f2fe);
+  border-radius: 20px;
+  box-shadow: 0px 10px 25px rgba(0, 0, 0, 0.2);
+  font-family: 'Roboto', sans-serif;
+  color: #222;
+}
+
+/* Header Styling */
+.dashboard-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.dashboard-title {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #ffdd57;
+}
+
+/* Games Row - Horizontal Layout */
+.games-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Individual Game Card Styling */
+.game-card {
+  background: linear-gradient(135deg, #4e54c8, #8f94fb);
+  color: white;
+  border-radius: 15px;
+  padding: 20px;
+  max-width: 300px;
+  width: 100%;
+  box-shadow: 0px 10px 25px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  text-align: center;
+  position: relative;
+}
+
+.game-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0px 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* Game Icon Styling */
+.game-icon {
+  width: 70px;
+  height: 70px;
+  margin: 0 auto 15px auto;
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.game-icon img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+}
+
+/* Game Title Styling */
+.game-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 15px;
+  background: linear-gradient(to right, #ffdd57, #ff8a00);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-transform: uppercase;
+}
+
+/* Leaderboard List (Players) */
+.leaderboard-list {
+  margin-top: 20px;
+}
+
+/* Player Card Styling */
+.player-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f3f4f6;
+  color: #333;
+  padding: 10px 15px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.player-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0px 5px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Rank Badge */
+.player-card-rank {
+  background: #6c63ff;
+  color: white;
+  font-weight: bold;
+  font-size: 1rem;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Player Info */
+.player-card-info {
+  text-align: left;
+  flex: 1;
+  margin-left: 10px;
+}
+
+.player-card-name {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.player-card-score {
+  font-size: 0.9rem;
+  color: #6c63ff;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .games-row {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .game-card {
+    max-width: 100%;
+  }
+}

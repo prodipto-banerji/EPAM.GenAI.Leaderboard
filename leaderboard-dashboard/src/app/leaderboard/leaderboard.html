@@ -1,0 +1,39 @@
+<div class="dashboard">
+  <!-- Dashboard Header -->
+  <div class="dashboard-header">
+    <h1 class="dashboard-title">Leaderboard Dashboard</h1>
+  </div>
+
+  <!-- Games Leaderboard Row -->
+  <div class="games-row">
+    <ng-container *ngFor="let game of filteredData">
+      <div class="game-card">
+        <!-- Game Icon -->
+        <div class="game-icon">
+          <img src="assets/icons/game-icon.svg" alt="{{ game.game }}" />
+        </div>
+
+        <!-- Game Title -->
+        <h2 class="game-title">{{ game.game }}</h2>
+
+        <!-- Player Cards -->
+        <div class="leaderboard-list">
+          <div
+            class="player-card"
+            *ngFor="let player of game.leaderboard[0]?.players; trackBy: trackByPlayerId"
+            #playerCard
+            [attr.data-id]="player.id"
+          >
+            <div class="player-card-rank">
+              <span>{{ player.rank }}</span>
+            </div>
+            <div class="player-card-info">
+              <p class="player-card-name">{{ player.name }}</p>
+              <p class="player-card-score">{{ player.score }} pts</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+</div>
