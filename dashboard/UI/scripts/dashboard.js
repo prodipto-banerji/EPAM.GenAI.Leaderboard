@@ -33,10 +33,25 @@ function showLocationSelector() {
 
 // Clear dashboard data
 function clearDashboard() {
+    console.log('Clearing dashboard');
     const podiumContainer = document.getElementById('podiumContainer');
     const tbody = document.querySelector('.leaderboard-table tbody');
-    podiumContainer.innerHTML = '';
-    tbody.innerHTML = '';
+    
+    // Clear containers
+    if (podiumContainer) {
+        podiumContainer.innerHTML = '';
+    }
+    if (tbody) {
+        tbody.innerHTML = '';
+    }
+    
+    // Reset all player arrays
+    allPlayers = [];
+    displayedPlayers = 0;
+    previousTop3 = [];
+    
+    // Update table display
+    updateTableDisplay();
 }
 
 // WebSocket connection management
@@ -51,7 +66,7 @@ function connectWebSocket(location) {
         ws = new WebSocket('ws://localhost:8080');
 
         ws.onopen = () => {
-            console.log('Connected to WebSocket server');
+            console.log('WebSocket connected');
             // Send location preference
             ws.send(JSON.stringify({
                 type: 'setLocation',
@@ -59,23 +74,36 @@ function connectWebSocket(location) {
             }));
             resolve();
         };        ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === 'rankings' && location === currentLocation) {
-                const players = message.data;
-                // Check for real changes in top 3
-                const top3 = players.slice(0, 3);
-                checkForPositionChanges(top3);
+            try {
+                const message = JSON.parse(event.data);
+                console.log('Received WebSocket message:', message); // Debug log
                 
-                // Update podium with top 3
-                updatePodium(top3, location);
-                
-                // Store remaining players for scroll-based updates
-                allPlayers = players.slice(3);
-                
-                // Only update initial table view if no players are displayed yet
-                if (displayedPlayers === 0) {
-                    updateTableDisplay();
+                switch (message.type) {
+                    case 'rankings':
+                        // Always update game status first
+                        if (message.gameStatus) {
+                            console.log('Updating game status from rankings:', message.gameStatus);
+                            updateGameStatus(message.gameStatus);
+                        }
+                        console.log('Updating dashboard with players:', message.data);
+                        updateDashboard(message.data || [], message.location);
+                        break;
+                        
+                    case 'gameStatus':
+                        console.log('Received direct game status update:', message.status);
+                        updateGameStatus(message.status);
+                        // Clear rankings when game stops
+                        if (!message.status.active) {
+                            console.log('Game stopped, clearing dashboard');
+                            clearDashboard();
+                        }
+                        break;
+                        
+                    default:
+                        console.log('Unknown message type:', message.type);
                 }
+            } catch (error) {
+                console.error('Error processing message:', error);
             }
         };
 
@@ -85,12 +113,10 @@ function connectWebSocket(location) {
         };
 
         ws.onclose = () => {
-            console.log('Disconnected from WebSocket server');
-            // Attempt to reconnect after 5 seconds
+            console.log('WebSocket disconnected');
+            // Try to reconnect after 5 seconds
             setTimeout(() => {
-                if (currentLocation) {
-                    connectWebSocket(currentLocation);
-                }
+                connectWebSocket(location).catch(console.error);
             }, 5000);
         };
     });
@@ -477,15 +503,18 @@ function updatePodium(topPlayers, location) {
 
 function updateDashboard(players, location) {
     // Only update if this is for the current location
-    if (location !== currentLocation) {
-        return;
-    }
+    if (location !== currentLocation) return;
 
-    // Get top 3 players and check for changes
+    // Reset all players arrays
+    allPlayers = [];
+    displayedPlayers = 0;
+    // previousTop3 = []; // <-- Do NOT reset here, so position changes are detected
+
+    // Get top 3 players and check for changes (if any players exist)
     const top3 = players.slice(0, 3);
     checkForPositionChanges(top3);
     
-    // Update podium with top 3
+    // Update podium with top 3 (or empty state)
     updatePodium(top3, location);
     
     // Store remaining players for infinite scrolling
@@ -494,6 +523,45 @@ function updateDashboard(players, location) {
 
     // Update table with remaining players
     updateTableDisplay();
+}
+
+// Update game status display
+function updateGameStatus(status) {
+    const gameStatusDiv = document.getElementById('gameStatus');
+    const gameStatusMessage = document.getElementById('gameStatusMessage');
+    const lastGameInfo = document.getElementById('lastGameInfo');
+    
+    if (!gameStatusDiv || !gameStatusMessage || !lastGameInfo) return;
+
+    gameStatusDiv.style.display = 'block';    if (status.active) {
+        // Active game session
+        gameStatusDiv.className = 'game-status active';
+        gameStatusMessage.textContent = `Game Session "${status.slotName}" is active!`;
+        lastGameInfo.style.display = 'none';
+        lastGameInfo.innerHTML = '';
+        
+        // Clear any previous game data
+        clearDashboard();
+    } else {
+        // No active game
+        gameStatusDiv.className = 'game-status inactive';            if (status.lastSlotInfo) {
+            const lastSlot = status.lastSlotInfo;
+            const startDate = new Date(lastSlot.startTime.replace(' ', 'T'));
+            const endDate = new Date(lastSlot.endTime.replace(' ', 'T'));
+            
+            gameStatusMessage.textContent = 'No active game session';
+            lastGameInfo.innerHTML = `
+                Last completed session: <strong>${lastSlot.name}</strong><br>
+                Started: ${startDate.toLocaleTimeString()}<br>
+                Ended: ${endDate.toLocaleTimeString()}<br>
+                Duration: ${lastSlot.duration}
+            `;
+            lastGameInfo.style.display = 'block';
+        } else {
+            gameStatusMessage.textContent = 'No game sessions recorded yet';
+            lastGameInfo.style.display = 'none';
+        }
+    }
 }
 
 // Initialize on page load

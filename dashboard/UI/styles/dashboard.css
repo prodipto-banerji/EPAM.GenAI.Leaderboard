@@ -670,40 +670,68 @@ html {
 
 /* Game Status Styles */
 .game-status {
-    background: rgba(0, 0, 0, 0.7);
-    color: #fff;
-    padding: 15px 20px;
-    border-radius: 10px;
     text-align: center;
-    margin: 20px auto;
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin: 0 auto 20px;
+    transition: all 0.3s ease;
+    width: 80%;
     max-width: 600px;
-    border: 2px solid;
-    animation: fadeIn 0.5s ease-in;
-}
-
-.game-status.inactive {
-    border-color: #ff4444;
-    background: rgba(255, 68, 68, 0.1);
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
 .game-status.active {
-    border-color: #00C851;
-    background: rgba(0, 200, 81, 0.1);
+    background-color: rgba(76, 175, 80, 0.9); /* Green */
+    border: 1px solid rgba(76, 175, 80, 0.3);
 }
 
-.game-status h3 {
-    margin: 0;
+.game-status.inactive {
+    background-color: rgba(244, 67, 54, 0.9); /* Red */
+    border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+#gameStatusMessage {
     font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+#lastGameInfo {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 0.95em;
+    line-height: 1.5;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translate(-50%, -100%);
+    }
+    to {
+        transform: translate(-50%, 0);
+    }
+}
+
+#lastGameInfo {
+    font-size: 0.9em;
+    opacity: 0.9;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.2);
+    line-height: 1.5;
+}
+
+#lastGameInfo strong {
+    color: #FFD700;
     font-weight: bold;
 }
 
-.game-status p {
-    margin: 10px 0 0;
-    font-size: 1em;
-    opacity: 0.9;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+.game-status.inactive #lastGameInfo {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 10px;
 }

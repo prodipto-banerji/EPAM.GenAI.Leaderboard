@@ -27,15 +27,14 @@
                 Territory: <span id="currentLocation">Not Selected</span>
                 <button class="change-location" id="changeLocationBtn">Change Territory</button>
             </div>
-        </div>
-
-        <div class="main-content">
-            <!-- Podium Section -->            <!-- Game Status -->
-            <div id="gameStatus" class="game-status inactive" style="display: none;">
-                <h3>Game Session Status</h3>
+        </div>            <div class="main-content">
+            <!-- Game Status Section -->
+            <div id="gameStatus" class="game-status" style="display: none;">
                 <p id="gameStatusMessage">Waiting for game session to start...</p>
+                <p id="lastGameInfo" style="display: none;"></p>
             </div>
 
+            <!-- Podium Section -->
             <div class="podium-section">
                 <div class="podium-container" id="podiumContainer">
                     <!-- Will be filled by JavaScript -->
