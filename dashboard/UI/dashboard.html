@@ -3,106 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Player Dashboard</title>
-    <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-    </style>
+    <title>Jungle Leaderboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Preload medal emojis for better performance -->
+    <link rel="preload" href="https://fonts.gstatic.com/s/notocoloremoji/v24/Noton3.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="stylesheet" href="styles/dashboard.css">
 </head>
 <body>
-    <h1>Player Dashboard</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>Rank</th>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Score</th>
-                <th>Duration Time</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>1</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>2</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>3</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>4</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>5</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>6</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>7</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>8</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>9</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>10</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-        </tbody>
-    </table>
+    <div class="container">
+        <!-- Location Selector -->
+        <div class="location-selector" id="locationSelector">
+            <h2>🌴 Choose Your Territory 🌴</h2>            <div class="location-options">
+                <button class="location-button" data-location="Hyderabad">🏰 Hyderabad</button>
+                <button class="location-button" data-location="Pune">🌄 Pune</button>
+                <button class="location-button" data-location="Chennai">🌊 Chennai</button>
+            </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div class="dashboard-header">
+            <h1>🏆 Jungle Champions 🏆</h1>
+            <div class="location-display">
+                Territory: <span id="currentLocation">Not Selected</span>
+                <button class="change-location" id="changeLocationBtn">Change Territory</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Podium Section -->            <!-- Game Status -->
+            <div id="gameStatus" class="game-status inactive" style="display: none;">
+                <h3>Game Session Status</h3>
+                <p id="gameStatusMessage">Waiting for game session to start...</p>
+            </div>
+
+            <div class="podium-section">
+                <div class="podium-container" id="podiumContainer">
+                    <!-- Will be filled by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Leaderboard Table -->
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th>Score</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Will be filled by JavaScript -->
+                </tbody>
+            </table>
+              <!-- Loading indicator for infinite scroll -->
+            <div id="loadingIndicator" style="display: none; text-align: center; padding: 20px;">
+                Loading more players...
+            </div>
+        </div>
+    </div>
+    <script src="scripts/dashboard.js"></script>
 </body>
 </html>
