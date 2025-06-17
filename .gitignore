@@ -1,0 +1,10 @@
+# Node modules and OS files
+node_modules/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.env
+.env.*
+# Azure deployment artifacts
+node_modules.tar.gz
