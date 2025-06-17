@@ -1,0 +1,21 @@
+{
+  "name": "epam-genai-leaderboard",
+  "version": "1.0.0",
+  "description": "EPAM GenAI Leaderboard project",
+  "main": "dashboard/API/websocket-server.js",
+  "scripts": {
+    "start": "node dashboard/API/websocket-server.js",
+    "build": "echo 'No build step defined'",
+    "test": "echo 'No tests defined'"
+  },
+  "author": "EPAM",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "sqlite3": "^5.1.6",
+    "sqlite": "^5.2.4"
+  }
+}
