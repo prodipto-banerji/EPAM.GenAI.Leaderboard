@@ -10,7 +10,13 @@ class ApiRouter {
         this.setupRoutes();
     }
 
-    setupRoutes() {        // Add or update player
+    setupRoutes() {
+        // Serve documentation page
+        this.router.get('/documentation', (req, res) => {
+            res.sendFile(path.join(__dirname, '../UI/documentation.html'));
+        });
+
+        // Add or update player
         this.router.post('/player', async (req, res) => {
             try {
                 const result = await this.databaseService.addOrUpdatePlayer(req.body);
