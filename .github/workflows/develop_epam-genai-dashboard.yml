@@ -81,24 +81,6 @@ jobs:
           package: .
           startup-command: 'npm install && npm start'
 
-on:
-  push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
-      - develop
-  workflow_dispatch:
-      - develop
-      - main
-  pull_request:
-    branches:
-      - develop
-      - main
-  workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -106,7 +88,9 @@ jobs:
       contents: read #This is required for actions/checkout
 
     steps:
-      - uses: actions/checkout@v4      - name: Set up Node.js version
+      - uses: actions/checkout@v4      
+      
+      - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
           node-version: '22.x'
