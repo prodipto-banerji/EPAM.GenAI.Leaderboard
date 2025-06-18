@@ -5,12 +5,19 @@ let currentLocation = null;
 // Store previous top 3 players
 let previousTop3 = [];
 
+// Store previous top 10 players for comparison
+let previousTop10 = [];
+
 // Infinite scroll state
 let allPlayers = [];
 let displayedPlayers = 0;
 const playersPerLoad = 7; // Number of players to load each time
 const initialTableSize = 7; // Number of players to show in table initially
 let isLoading = false; // Flag to prevent multiple simultaneous loads
+
+// Slot management
+let currentSlotId = null;
+let slots = [];
 
 // Location handling functions
 function selectLocation(location) {
@@ -23,8 +30,17 @@ function selectLocation(location) {
     // Set current location
     currentLocation = location;
     
-    // Connect to WebSocket and fetch data before updating UI
-    refreshDashboard(location);
+    // Close existing WebSocket connection if any
+    if (ws) {
+        ws.close();
+    }
+    
+    // Load initial data and establish new WebSocket connection
+    loadInitialData(location);
+    
+    // Update location display
+    document.getElementById('currentLocation').textContent = location;
+    document.getElementById('locationSelector').classList.add('hidden');
 }
 
 function showLocationSelector() {
@@ -62,48 +78,75 @@ function connectWebSocket(location) {
             ws.close();
         }
 
+        // Get the current host and determine WebSocket protocol
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        console.log('Connecting to WebSocket at:', wsUrl);
+        
         // Connect to WebSocket server
-        ws = new WebSocket('ws://localhost:8080');
+        ws = new WebSocket(wsUrl);
+        
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
 
         ws.onopen = () => {
-            console.log('WebSocket connected');
-            // Send location preference
-            ws.send(JSON.stringify({
-                type: 'setLocation',
-                location: location
-            }));
-            resolve();
-        };        ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                console.log('Received WebSocket message:', message); // Debug log
-                
-                switch (message.type) {
-                    case 'rankings':
-                        // Always update game status first
-                        if (message.gameStatus) {
-                            console.log('Updating game status from rankings:', message.gameStatus);
-                            updateGameStatus(message.gameStatus);
-                        }
-                        console.log('Updating dashboard with players:', message.data);
-                        updateDashboard(message.data || [], message.location);
-                        break;
+            console.log('WebSocket connection established');
+            // Send location and request initial game status
+            ws.send(JSON.stringify({ type: 'setLocation', location }));
+            ws.send(JSON.stringify({ type: 'getGameStatus' }));
+            resolve(ws);
+        };
+
+        ws.onmessage = async (event) => {
+            console.log('Received WebSocket message:', event.data);
+            const data = JSON.parse(event.data);
+            
+            switch (data.type) {
+                case 'rankings':
+                    if (data.location === currentLocation) {
+                        console.log('Updating dashboard with new rankings:', data.players);
+                        updateDashboard(data.players, data.location);
+                    }
+                    break;
+
+                case 'gameStatus':
+                    console.log('Received game status update:', data.status);
+                    const previousActiveSlotId = currentSlotId;
+                    updateGameStatus(data.status);
+
+                    if (data.status.slots) {
+                        updateSlotTabs(data.status.slots, data.status.activeSlotId);
                         
-                    case 'gameStatus':
-                        console.log('Received direct game status update:', message.status);
-                        updateGameStatus(message.status);
-                        // Clear rankings when game stops
-                        if (!message.status.active) {
-                            console.log('Game stopped, clearing dashboard');
-                            clearDashboard();
+                        // If active slot changed or we're viewing the active slot
+                        if (data.status.activeSlotId && 
+                            (previousActiveSlotId === currentSlotId || 
+                             currentSlotId === data.status.activeSlotId || 
+                             !currentSlotId)) {
+                            console.log('Switching to active slot:', data.status.activeSlotId);
+                            currentSlotId = data.status.activeSlotId;
+                            // Request fresh rankings for the new active slot
+                            await loadSlotData(currentSlotId);
+                            // Request immediate rankings update
+                            ws.send(JSON.stringify({ 
+                                type: 'getRankings', 
+                                location: currentLocation,
+                                slotId: currentSlotId 
+                            }));
                         }
-                        break;
-                        
-                    default:
-                        console.log('Unknown message type:', message.type);
-                }
-            } catch (error) {
-                console.error('Error processing message:', error);
+                    }
+                    break;
+
+                case 'playerUpdate':
+                    console.log('Received player update for location:', data.location);
+                    if (data.location === currentLocation) {
+                        // Immediately request fresh rankings
+                        ws.send(JSON.stringify({ 
+                            type: 'getRankings', 
+                            location: currentLocation,
+                            slotId: currentSlotId 
+                        }));
+                    }
+                    break;
             }
         };
 
@@ -113,10 +156,15 @@ function connectWebSocket(location) {
         };
 
         ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            // Try to reconnect after 5 seconds
+            console.log('WebSocket connection closed');
+            // Attempt to reconnect after 5 seconds
             setTimeout(() => {
-                connectWebSocket(location).catch(console.error);
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    console.log(`Attempting to reconnect... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+                    reconnectAttempts++;
+                    connectWebSocket(location)
+                        .catch(error => console.error('Reconnection failed:', error));
+                }
             }, 5000);
         };
     });
@@ -351,22 +399,40 @@ function handleScroll() {
     }
 }
 
+// Constants for player loading
+const INITIAL_TABLE_SIZE = 7;  // Players 4-10 (after podium)
+const SCROLL_BATCH_SIZE = 10;  // Load 10 players at a time when scrolling
+
 // Load more players
 function loadMorePlayers() {
     const tbody = document.querySelector('.leaderboard-table tbody');
     if (!tbody) return;
 
+    console.log('Loading more players. Currently displayed:', displayedPlayers, 'Total available:', allPlayers.length);
+
     const start = displayedPlayers;
-    const end = displayedPlayers === 0 
-        ? Math.min(initialTableSize, allPlayers.length)  // Load initial 7 players
-        : Math.min(start + playersPerLoad, allPlayers.length);  // Load next batch on scroll
+    let end;
+    
+    if (displayedPlayers === 0) {
+        // Initial load - show ranks 4-10 (7 players)
+        end = Math.min(INITIAL_TABLE_SIZE, allPlayers.length);
+        console.log('Initial load: Loading ranks 4-10');
+    } else {
+        // Scroll load - show next 10 players
+        end = Math.min(start + SCROLL_BATCH_SIZE, allPlayers.length);
+        console.log('Scroll load: Loading next batch of players');
+    }
+
+    console.log('Loading players from index', start, 'to', end);
     
     // Add new players
     for (let i = start; i < end; i++) {
         const player = allPlayers[i];
         const row = tbody.insertRow();
+        const playerRank = i + 4; // Add 4 because we start after podium (ranks 1-3)
+        
         row.innerHTML = `
-            <td>${i + 4}</td>
+            <td>${playerRank}</td>
             <td>
                 <div class="player-row">
                     <img class="player-avatar" src="${getDefaultAvatar(player.name)}" alt="${player.name}">
@@ -383,11 +449,14 @@ function loadMorePlayers() {
     }
     
     displayedPlayers = end;
+    console.log('Updated displayed players count to:', displayedPlayers);
 
     // Update loading indicator visibility
     const loadingIndicator = document.getElementById('loadingIndicator');
     if (loadingIndicator) {
-        loadingIndicator.style.display = displayedPlayers < allPlayers.length ? 'block' : 'none';
+        const hasMorePlayers = displayedPlayers < allPlayers.length;
+        loadingIndicator.style.display = hasMorePlayers ? 'block' : 'none';
+        console.log('Loading indicator:', hasMorePlayers ? 'shown' : 'hidden');
     }
 }
 
@@ -420,12 +489,20 @@ function showNoDataMessage(tbody) {
 // Update table display
 function updateTableDisplay() {
     const tbody = document.querySelector('.leaderboard-table tbody');
+    if (!tbody) {
+        console.error('Table body not found');
+        return;
+    }
+
+    console.log('Updating table display. Total players:', allPlayers.length);
     tbody.innerHTML = '';
     displayedPlayers = 0;
 
-    // If no players after top 3, hide table
+    // If no players after top 3, show no data message
     if (allPlayers.length === 0) {
-        toggleTableVisibility(false);
+        console.log('No players to display in table');
+        showNoDataMessage(tbody);
+        toggleTableVisibility(true); // Still show table with "no data" message
         return;
     }
 
@@ -443,7 +520,7 @@ async function refreshDashboard(location) {
         await connectWebSocket(location);
 
         // Fetch initial rankings
-        const response = await fetch(`http://localhost:8080/api/rankings/${location}`);
+        const response = await fetch(`${window.location.origin}/api/rankings/${location}`);
         const data = await response.json();
         
         if (data.status === 'success' && location === currentLocation) {
@@ -499,30 +576,178 @@ function updatePodium(topPlayers, location) {
             podiumContainer.appendChild(podiumPlace);
         }
     });
+}    // Update slot tabs
+    function updateSlotTabs(slotsData, activeSlotId) {
+        const slotTabs = document.getElementById('slotTabs');
+        slots = slotsData;
+        
+        // Only update currentSlotId if we don't have one yet or if we're on the active slot
+        if (!currentSlotId || currentSlotId === activeSlotId) {
+            currentSlotId = activeSlotId;
+        }
+
+        // Clear existing tabs
+        slotTabs.innerHTML = '';// Add tabs for each slot
+    slots.forEach(slot => {
+        const tab = document.createElement('button');
+        tab.className = `slot-tab${slot.id === currentSlotId ? ' active' : ''}${slot.status === 'active' ? ' active-slot' : ''}`;
+        
+        // Create slot name with status indicator
+        let statusEmoji = slot.status === 'active' ? '🟢' : '⭕';
+        let statusText = slot.status === 'active' ? 'Active' : 'Completed';
+        
+        tab.innerHTML = `
+            ${slot.name} 
+            <span class="slot-status">${statusEmoji} ${statusText}</span>
+            <div class="slot-info">
+                ${new Date(slot.start_time).toLocaleDateString()} 
+                ${slot.duration ? `- ${slot.duration}` : ''}
+            </div>
+        `;
+        
+        tab.onclick = () => loadSlotData(slot.id);
+        slotTabs.appendChild(tab);
+    });
 }
 
-function updateDashboard(players, location) {
-    // Only update if this is for the current location
-    if (location !== currentLocation) return;
+// Load data for a specific slot
+async function loadSlotData(slotId) {
+    try {
+        console.log('Loading data for slot:', slotId);
+        currentSlotId = slotId;
 
-    // Reset all players arrays
-    allPlayers = [];
-    displayedPlayers = 0;
-    // previousTop3 = []; // <-- Do NOT reset here, so position changes are detected
+        // Update UI to show loading state
+        const tbody = document.querySelector('.leaderboard-table tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="4" class="loading-message">Loading data...</td></tr>';
+        }
 
-    // Get top 3 players and check for changes (if any players exist)
-    const top3 = players.slice(0, 3);
-    checkForPositionChanges(top3);
+        // Request fresh rankings through WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            console.log('Requesting rankings for slot:', slotId);
+            ws.send(JSON.stringify({ 
+                type: 'getRankings', 
+                location: currentLocation,
+                slotId: slotId 
+            }));
+        } else {
+            console.log('WebSocket not ready, fetching data via HTTP');
+            // Fallback to HTTP if WebSocket is not available
+            const response = await fetch(`${window.location.origin}/api/rankings/${currentLocation}?slotId=${slotId}`);
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                updateDashboard(data.rankings, currentLocation);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading slot data:', error);
+        const tbody = document.querySelector('.leaderboard-table tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="4" class="error-message">Error loading data. Please try again.</td></tr>';
+        }
+    }
+}
+
+// Load initial data for a location
+async function loadInitialData(location) {
+    try {
+        console.log('Loading initial data for location:', location);
+        
+        // Show loading state
+        document.getElementById('currentLocation').textContent = 'Loading...';
+        
+        // Connect to WebSocket first
+        await connectWebSocket(location);
+        
+        // Fetch initial rankings
+        console.log('Fetching initial rankings');
+        const response = await fetch(`${window.location.origin}/api/rankings/${location}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        
+        if (data.status === 'success' && location === currentLocation) {
+            console.log('Initial rankings received:', data.rankings);
+            if (Array.isArray(data.rankings) && data.rankings.length > 0) {
+                updateDashboard(data.rankings, location);
+            } else {
+                showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+            }
+        } else {
+            console.log('Initial rankings not successful or location changed');
+            showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+        }
+
+        // Update location display
+        document.getElementById('currentLocation').textContent = location;
+    } catch (error) {
+        console.error('Error loading initial data:', error);
+        document.getElementById('currentLocation').textContent = location;
+        showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+    }
+}
+
+// Modify existing updateDashboard function to handle slot data
+async function updateDashboard(players, location) {
+    if (location !== currentLocation) {
+        console.log('Location mismatch, skipping update');
+        return;
+    }
+
+    if (!Array.isArray(players)) {
+        console.error('Invalid players data received');
+        showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+        return;
+    }
+
+    console.log('Updating dashboard with players:', players.length);
+
+    // Get top 3 players for podium
+    const top3Players = players.slice(0, 3);
+    console.log('Top 3 players:', top3Players);
+
+    // Update podium with top 3
+    updatePodium(top3Players, location);
     
-    // Update podium with top 3 (or empty state)
-    updatePodium(top3, location);
-    
-    // Store remaining players for infinite scrolling
+    // Get remaining players for table (rank 4+)
     allPlayers = players.slice(3);
+    console.log('Remaining players for table:', allPlayers.length);
+    
+    // Reset displayed players count
     displayedPlayers = 0;
+    
+    // Update the table display
+    const tbody = document.querySelector('.leaderboard-table tbody');
+    if (tbody) {
+        if (allPlayers.length > 0) {
+            // Clear existing rows
+            tbody.innerHTML = '';
+            // Load initial set of players
+            loadMorePlayers();
+        } else if (players.length === 0) {
+            showNoDataMessage(tbody);
+        }
+    }
+    
+    // Check for position changes and celebrate if needed
+    checkForPositionChanges(players);
+}
 
-    // Update table with remaining players
-    updateTableDisplay();
+// Function to check if top 10 rankings have changed
+function checkTop10Changes(newTop10) {
+    // If we don't have previous data, consider it as changed
+    if (previousTop10.length === 0) return true;
+    
+    // Compare each player in top 10
+    return newTop10.some((player, index) => {
+        const prevPlayer = previousTop10[index];
+        return !prevPlayer || 
+               prevPlayer.name !== player.name || 
+               prevPlayer.score !== player.score ||
+               prevPlayer.rank !== player.rank;
+    });
 }
 
 // Update game status display
@@ -530,13 +755,29 @@ function updateGameStatus(status) {
     const gameStatusDiv = document.getElementById('gameStatus');
     const gameStatusMessage = document.getElementById('gameStatusMessage');
     const lastGameInfo = document.getElementById('lastGameInfo');
+    const slotTabs = document.getElementById('slotTabs');
     
     if (!gameStatusDiv || !gameStatusMessage || !lastGameInfo) return;
 
-    gameStatusDiv.style.display = 'block';    if (status.active) {
+    gameStatusDiv.style.display = 'block';
+    
+    // Hide slot tabs if no slots exist
+    if (slotTabs) {
+        slotTabs.style.display = status.hasSlots ? 'flex' : 'none';
+    }
+    
+    if (!status.hasSlots) {
+        // No slots exist yet
+        gameStatusDiv.className = 'game-status no-slots';
+        gameStatusMessage.textContent = status.message;
+        lastGameInfo.style.display = 'none';
+        lastGameInfo.innerHTML = '';
+        clearDashboard();
+    } else if (status.active) {
         // Active game session
         gameStatusDiv.className = 'game-status active';
         gameStatusMessage.textContent = `Game Session "${status.slotName}" is active!`;
+        gameStatusDiv.style.display = 'none';
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
         
@@ -544,23 +785,41 @@ function updateGameStatus(status) {
         clearDashboard();
     } else {
         // No active game
-        gameStatusDiv.className = 'game-status inactive';            if (status.lastSlotInfo) {
+        gameStatusDiv.className = 'game-status inactive';
+        
+        let infoHTML = '';
+        
+        // Add winners information if available
+        if (status.winners && status.winners.length > 0) {
+            infoHTML += '<div class="winners-section"><h3>🏆 Game Winners 🏆</h3><ul>';
+            status.winners.forEach((winner, index) => {
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉';
+                infoHTML += `<li>${medal} ${winner.name} - Score: ${winner.score} (${winner.displaytime})</li>`;
+            });
+            infoHTML += '</ul></div>';
+        }
+        
+        if (status.lastSlotInfo) {
             const lastSlot = status.lastSlotInfo;
-            const startDate = new Date(lastSlot.startTime.replace(' ', 'T'));
-            const endDate = new Date(lastSlot.endTime.replace(' ', 'T'));
+            const startDate = new Date(lastSlot.start_time.replace(' ', 'T'));
+            const endDate = new Date(lastSlot.end_time.replace(' ', 'T'));
             
             gameStatusMessage.textContent = 'No active game session';
-            lastGameInfo.innerHTML = `
-                Last completed session: <strong>${lastSlot.name}</strong><br>
-                Started: ${startDate.toLocaleTimeString()}<br>
-                Ended: ${endDate.toLocaleTimeString()}<br>
-                Duration: ${lastSlot.duration}
+            infoHTML += `
+                <div class="last-game-section">
+                    <h3>Last Session Details</h3>
+                    <p>Session: <strong>${lastSlot.name}</strong></p>
+                    <p>Started: ${startDate.toLocaleTimeString()}</p>
+                    <p>Ended: ${endDate.toLocaleTimeString()}</p>
+                    <p>Duration: ${lastSlot.duration}</p>
+                </div>
             `;
-            lastGameInfo.style.display = 'block';
         } else {
             gameStatusMessage.textContent = 'No game sessions recorded yet';
-            lastGameInfo.style.display = 'none';
         }
+        
+        lastGameInfo.innerHTML = infoHTML;
+        lastGameInfo.style.display = infoHTML ? 'block' : 'none';
     }
 }
 
