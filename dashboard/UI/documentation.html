@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation - EPAM GenAI Leaderboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        .header {
+            background-color: #2d3748;
+            color: white;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .endpoint {
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .endpoint-header {
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            background-color: #f7fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .method {
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-right: 1rem;
+            min-width: 80px;
+            text-align: center;
+        }
+        .post { background-color: #48BB78; color: white; }
+        .get { background-color: #4299E1; color: white; }
+        .path {
+            font-family: monospace;
+            font-size: 1.1rem;
+        }
+        .endpoint-content {
+            padding: 1rem;
+        }
+        .description {
+            margin-bottom: 1rem;
+        }
+        .parameters, .response {
+            margin-top: 1rem;
+        }
+        h3 {
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+        }
+        code {
+            background-color: #f7fafc;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .parameter {
+            margin-bottom: 0.5rem;
+        }
+        .required {
+            color: #E53E3E;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>EPAM GenAI Leaderboard API Documentation</h1>
+            <p>API documentation for interacting with the EPAM GenAI Leaderboard system</p>
+        </div>
+    </div>
+    <div class="container">
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/player</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Add or update a player in the leaderboard</div>
+                <div class="parameters">
+                    <h3>Request Body</h3>
+                    <div class="parameter">
+                        <code>location</code> <span class="required">required</span>
+                        <p>The location of the player</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>{
+  "status": "success",
+  "message": "Player added/updated successfully",
+  "updated": boolean
+}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/slots</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Get all available game slots</div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>[{
+  "id": "string",
+  "name": "string",
+  "active": boolean,
+  "created_at": "timestamp"
+}]</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/slots/start</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Start a new game slot</div>
+                <div class="parameters">
+                    <h3>Request Body</h3>
+                    <div class="parameter">
+                        <code>slotName</code> <span class="required">required</span>
+                        <p>The name of the new slot to start</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>{
+  "status": "success",
+  "data": {
+    "id": "string",
+    "name": "string",
+    "active": true,
+    "created_at": "timestamp"
+  }
+}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/slots/:slotId/stop</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Stop an active game slot</div>
+                <div class="parameters">
+                    <h3>URL Parameters</h3>
+                    <div class="parameter">
+                        <code>slotId</code> <span class="required">required</span>
+                        <p>The ID of the slot to stop</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>{
+  "status": "success",
+  "data": {
+    "id": "string",
+    "name": "string",
+    "active": false,
+    "created_at": "timestamp"
+  }
+}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/slots/:slotId/players</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Get players for a specific slot</div>
+                <div class="parameters">
+                    <h3>URL Parameters</h3>
+                    <div class="parameter">
+                        <code>slotId</code> <span class="required">required</span>
+                        <p>The ID of the slot</p>
+                    </div>
+                    <h3>Query Parameters</h3>
+                    <div class="parameter">
+                        <code>location</code> <span class="required">optional</span>
+                        <p>Filter players by location</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>[{
+  "id": "string",
+  "name": "string",
+  "score": number,
+  "location": "string"
+}]</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/rankings/:location</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Get rankings for a specific location</div>
+                <div class="parameters">
+                    <h3>URL Parameters</h3>
+                    <div class="parameter">
+                        <code>location</code> <span class="required">required</span>
+                        <p>The location to get rankings for</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>[{
+  "id": "string",
+  "name": "string",
+  "score": number,
+  "location": "string"
+}]</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
