@@ -75,11 +75,11 @@ jobs:
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
-        with:          app-name: 'epam-genai-dashboard'
+        with:          
+          app-name: 'epam-genai-dashboard'
           slot-name: 'Production'
           package: .
           startup-command: 'npm install && npm start'
-          npm install
 
       - name: Zip artifact for deployment
         working-directory: ./dashboard
