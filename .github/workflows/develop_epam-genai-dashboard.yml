@@ -65,7 +65,10 @@ jobs:
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_D09BC2DEEADD43258D00BA6055336B6A }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_8E6F91968D7846628EA220927B1F7292 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_460DCA826BE74ED4975329CE1A24CF09 }}      - name: Create .env file
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_460DCA826BE74ED4975329CE1A24CF09 }}
+          
+            
+      - name: Create .env file
         run: |
           echo "APP_PORT=${{ secrets.APP_PORT }}" > .env
           echo "DB_PATH=${{ secrets.DB_PATH }}" >> .env
