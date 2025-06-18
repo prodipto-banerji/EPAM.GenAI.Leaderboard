@@ -75,29 +75,10 @@ jobs:
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'epam-genai-dashboard'
+        with:          app-name: 'epam-genai-dashboard'
           slot-name: 'Production'
           package: .
           startup-command: 'npm install && npm start'
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - uses: actions/checkout@v4      
-      
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
-        with:
-          node-version: '22.x'
-
-      - name: npm install and start
-        working-directory: ./dashboard
-        run: |
           npm install
 
       - name: Zip artifact for deployment
