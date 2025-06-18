@@ -26,13 +26,21 @@ jobs:
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '20.x'      
+          node-version: '20.x'
+
           
+      - name: Install build essentials
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3
+
       - name: Install dependencies and rebuild sqlite3
         working-directory: ./dashboard
         run: |
+          npm install -g node-gyp
+          npm config set python /usr/bin/python3
           npm install
-          npm rebuild sqlite3 --build-from-source
+          npm install sqlite3 --build-from-source
 
       - name: Zip artifact for deployment
         working-directory: ./dashboard
@@ -81,4 +89,4 @@ jobs:
           app-name: 'epam-genai-dashboard'
           slot-name: 'Production'
           package: .
-          startup-command: 'cd /home/site/wwwroot && npm install && npm rebuild sqlite3 --build-from-source && npm start'
+          startup-command: 'cd /home/site/wwwroot && npm install -g node-gyp && export PYTHON=/usr/bin/python3 && npm install sqlite3 --build-from-source && npm start'
