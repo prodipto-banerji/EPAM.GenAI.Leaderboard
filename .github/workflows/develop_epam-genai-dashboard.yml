@@ -26,16 +26,15 @@ jobs:
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '20.x'
-
-      - name: npm install and start
+          node-version: '20.x'      - name: Install dependencies and rebuild sqlite3
         working-directory: ./dashboard
         run: |
           npm install
+          npm rebuild sqlite3 --build-from-source
 
       - name: Zip artifact for deployment
         working-directory: ./dashboard
-        run: zip release.zip ./* -r -x "node_modules/*"
+        run: zip release.zip ./* -r
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -66,8 +65,8 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_D09BC2DEEADD43258D00BA6055336B6A }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_8E6F91968D7846628EA220927B1F7292 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_460DCA826BE74ED4975329CE1A24CF09 }}
-          
-            
+
+
       - name: Create .env file
         run: |
           echo "APP_PORT=${{ secrets.APP_PORT }}" > .env
@@ -80,4 +79,4 @@ jobs:
           app-name: 'epam-genai-dashboard'
           slot-name: 'Production'
           package: .
-          startup-command: 'npm install && npm start'
+          startup-command: 'cd /home/site/wwwroot && npm install && npm rebuild sqlite3 --build-from-source && npm start'
