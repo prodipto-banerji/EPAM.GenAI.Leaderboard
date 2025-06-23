@@ -104,8 +104,8 @@ function connectWebSocket(location) {
             switch (data.type) {
                 case 'rankings':
                     if (data.location === currentLocation) {
-                        console.log('Updating dashboard with new rankings:', data.players);
-                        updateDashboard(data.players, data.location);
+                        // If data.updatedPlayer exists, pass it; else, pass null
+                        updateDashboard(data.players, data.location, data.updatedPlayer || null);
                     }
                     break;
 
@@ -143,7 +143,8 @@ function connectWebSocket(location) {
                         ws.send(JSON.stringify({ 
                             type: 'getRankings', 
                             location: currentLocation,
-                            slotId: currentSlotId 
+                            slotId: currentSlotId,
+                            updatedPlayer: data.player || null // Pass player if available
                         }));
                     }
                     break;
@@ -678,49 +679,42 @@ async function loadInitialData(location) {
     }
 }
 
-// Modify existing updateDashboard function to handle slot data
-async function updateDashboard(players, location) {
+// Helper: check if a player is in the top 10
+function isPlayerInTop10(player, players) {
+    if (!player || !Array.isArray(players)) return false;
+    return players.slice(0, 10).some(p => p && p.name === player.name);
+}
+
+// Modify updateDashboard to accept an optional updatedPlayer argument
+async function updateDashboard(players, location, updatedPlayer = null) {
     if (location !== currentLocation) {
         console.log('Location mismatch, skipping update');
         return;
     }
-
     if (!Array.isArray(players)) {
         console.error('Invalid players data received');
         showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
         return;
     }
-
+    // If updatedPlayer is provided, only update if that player is in the new top 10
+    if (updatedPlayer && !isPlayerInTop10(updatedPlayer, players)) {
+        console.log('Updated player not in top 10, skipping dashboard update');
+        return;
+    }
     console.log('Updating dashboard with players:', players.length);
-
-    // Get top 3 players for podium
     const top3Players = players.slice(0, 3);
-    console.log('Top 3 players:', top3Players);
-
-    // Update podium with top 3
     updatePodium(top3Players, location);
-    
-    // Get remaining players for table (rank 4+)
     allPlayers = players.slice(3);
-    console.log('Remaining players for table:', allPlayers.length);
-    
-    // Reset displayed players count
     displayedPlayers = 0;
-    
-    // Update the table display
     const tbody = document.querySelector('.leaderboard-table tbody');
     if (tbody) {
         if (allPlayers.length > 0) {
-            // Clear existing rows
             tbody.innerHTML = '';
-            // Load initial set of players
             loadMorePlayers();
         } else if (players.length === 0) {
             showNoDataMessage(tbody);
         }
     }
-    
-    // Check for position changes and celebrate if needed
     checkForPositionChanges(players);
 }
 

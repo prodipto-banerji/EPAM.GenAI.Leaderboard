@@ -48,6 +48,7 @@ app.use((req, res, next) => {
 
 // Initialize services
 const databaseService = new DatabaseService(DB_PATH);
+let wss; // <-- Expose wss for use in this file
 
 // Create an async function to initialize the server
 async function initializeServer() {
@@ -58,6 +59,7 @@ async function initializeServer() {
         // Then initialize other services that depend on the database
         const ranker = new Ranker();
         const webSocketService = new WebSocketService(server, databaseService, ranker);
+        wss = webSocketService.wss; // <-- Expose wss for use in this file
         const apiRouter = new ApiRouter(databaseService, webSocketService);
 
         // Set up routes
@@ -74,18 +76,17 @@ app.get('/', (req, res) => {
 }
 
 // Database helper functions
-async function initializeDatabase() {
-    try {
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
+let db; // <-- Add this line to define db globally
+
+// Ensure database is initialized before any db access
+async function ensureDbInitialized() {
+    if (!db) {
         db = await open({
             filename: DB_PATH,
             driver: sqlite3.Database
         });
-        
-        // Create necessary tables
-        await createTables();
-    } catch (error) {
-        console.error('Error initializing database:', error);
-        throw error;
     }
 }
 
@@ -128,6 +129,7 @@ async function createTables() {
 // Get all slots with their status
 async function getAllSlots() {
     try {
+        await ensureDbInitialized();
         return await db.all(`
             SELECT 
                 id,
@@ -152,6 +154,7 @@ async function getAllSlots() {
 // Get current active slot
 async function getActiveSlot() {
     try {
+        await ensureDbInitialized();
         return await db.get(`
             SELECT id, name, datetime(start_time) as start_time
             FROM slots 
@@ -168,6 +171,7 @@ async function getActiveSlot() {
 // Function to get players for a specific slot
 async function getPlayersForSlot(slotId, location = null) {
     try {
+        await ensureDbInitialized();
         const params = [slotId];
         let query = 'SELECT p.*, s.name as slot_name, s.status as slot_status ' +
                    'FROM players p ' +
@@ -191,6 +195,7 @@ async function getPlayersForSlot(slotId, location = null) {
 // Function to get top players across all slots
 async function getTopPlayersAcrossSlots() {
     try {
+        await ensureDbInitialized();
         // Get the best score for each player across all slots
         const query = `
             SELECT 
@@ -223,20 +228,24 @@ async function getTopPlayersAcrossSlots() {
 // Add player to database
 async function addPlayerToDb(playerData) {
     try {
+        await ensureDbInitialized();
         // Get the active slot
         const activeSlot = await getActiveSlot();
         if (!activeSlot) {
             throw new Error('No active slot available');
         }
-
         const slotId = activeSlot.id;
-
+        // Ensure date is present, fallback to now if missing
+        let date = playerData.date;
+        if (!date) {
+            date = new Date().toISOString();
+        }
         // Insert new player for current slot
         await db.run(
             `INSERT INTO players (name, email, score, timetaken, displaytime, date, location, slot_id)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [playerData.name, playerData.email, playerData.score, playerData.timetaken,
-             playerData.displaytime, playerData.date, playerData.location, slotId]
+             playerData.displaytime, date, playerData.location, slotId]
         );
 
         return true;
@@ -249,6 +258,7 @@ async function addPlayerToDb(playerData) {
 // Get players for a specific location from the database
 async function getPlayersForLocation(location, slotId = null) {
     try {
+        await ensureDbInitialized();
         let query = `
             SELECT p.*, s.name as slot_name
             FROM players p
@@ -509,7 +519,7 @@ async function stopSlot(slotName) {
                     CASE 
                         WHEN (strftime('%s', end_time) - strftime('%s', start_time)) / 3600 >= 1 
                         THEN strftime('%H:%M:%S', julianday(end_time) - julianday(start_time)) 
-                        ELSE strftime('%M:%S', julianday(end_time) - julianday(start_time)) 
+                        ELSE strftime('%M:%S', julianday(end_time) - julianday(startTime)) 
                     END as duration
                 FROM slots 
                 WHERE id = ?
@@ -562,7 +572,7 @@ async function getLastCompletedSlot() {
                 CASE 
                     WHEN (strftime('%s', end_time) - strftime('%s', start_time)) / 3600 >= 1 
                     THEN strftime('%H:%M:%S', julianday(end_time) - julianday(start_time)) 
-                    ELSE strftime('%M:%S', julianday(end_time) - julianday(start_time)) 
+                    ELSE strftime('%M:%S', julianday(end_time) - julianday(startTime)) 
                 END as duration
             FROM slots 
             WHERE status = 'completed' 
