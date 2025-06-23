@@ -4,14 +4,14 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
-const Ranker = require('../Model/Ranker');
-const DatabaseService = require('../services/DatabaseService');
-const WebSocketService = require('../services/WebSocketService');
-const ApiRouter = require('../routes/ApiRouter');
+const Ranker = require('./Model/Ranker');
+const DatabaseService = require('./services/DatabaseService');
+const WebSocketService = require('./services/WebSocketService');
+const ApiRouter = require('./routes/ApiRouter');
 
 // Constants for paths
 const DB_PATH = path.join(__dirname, 'leaderboard.db');
-const UI_PATH = path.join(__dirname, '../UI');
+const UI_PATH = path.join(__dirname, './UI');
 
 // Initialize Express app and HTTP server
 const app = express();
