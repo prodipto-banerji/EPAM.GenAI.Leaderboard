@@ -398,34 +398,114 @@ function handleScroll() {
 const INITIAL_TABLE_SIZE = 7;  // Players 4-10 (after podium)
 const SCROLL_BATCH_SIZE = 10;  // Load 10 players at a time when scrolling
 
-// Load more players
-function loadMorePlayers() {
+// Store all players for load more
+let allPlayersFull = [];
+
+// Update dashboard to only show top 10 (3 podium, 7 table), rest on load more
+async function updateDashboard(players, location, updatedPlayer = null) {
+    if (location !== currentLocation) {
+        console.log('Location mismatch, skipping update');
+        return;
+    }
+    if (!Array.isArray(players)) {
+        console.error('Invalid players data received');
+        showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+        return;
+    }
+    if (updatedPlayer && !isPlayerInTop10(updatedPlayer, players)) {
+        console.log('Updated player not in top 10, skipping dashboard update');
+        return;
+    }
+    // Store all players for load more
+    allPlayersFull = players;
+    // Only show top 10 initially
+    const top10 = players.slice(0, 10);
+    const top3Players = top10.slice(0, 3);
+    updatePodium(top3Players, location);
+    allPlayers = top10.slice(3); // 4-10 for table
+    displayedPlayers = 0;
+    const tbody = document.querySelector('.leaderboard-table tbody');
+    if (tbody) {
+        tbody.innerHTML = '';
+        loadMorePlayers();
+    }
+    // Show/hide load more button
+    showLoadMoreButton(players.length > 10);
+    checkForPositionChanges(players);
+}
+
+// Add a load more button below the table with improved style
+function showLoadMoreButton(show) {
+    let btn = document.getElementById('loadMoreBtn');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'loadMoreBtn';
+        btn.textContent = 'Load More';
+        btn.style.display = 'none';
+        btn.className = 'load-more-btn stylish-load-more';
+        btn.onclick = () => {
+            loadMorePlayers(true);
+        };
+        const table = document.querySelector('.leaderboard-table');
+        if (table && table.parentNode) {
+            table.parentNode.appendChild(btn);
+        }
+    }
+    btn.style.display = show ? 'block' : 'none';
+}
+
+// Add CSS for stylish load more button
+(function addLoadMoreBtnStyles() {
+    if (document.getElementById('loadMoreBtnStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'loadMoreBtnStyles';
+    style.textContent = `
+        .stylish-load-more {
+            margin: 32px auto 24px auto;
+            display: block;
+            padding: 14px 36px;
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
+            border: none;
+            border-radius: 32px;
+            box-shadow: 0 4px 16px rgba(80, 120, 255, 0.15);
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            letter-spacing: 1px;
+        }
+        .stylish-load-more:hover, .stylish-load-more:focus {
+            background: linear-gradient(90deg, #2575fc 0%, #6a11cb 100%);
+            transform: translateY(-2px) scale(1.04);
+            box-shadow: 0 8px 24px rgba(80, 120, 255, 0.22);
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
+// Load more players (7 at a time)
+function loadMorePlayers(isLoadMoreClick = false) {
     const tbody = document.querySelector('.leaderboard-table tbody');
     if (!tbody) return;
-
-    console.log('Loading more players. Currently displayed:', displayedPlayers, 'Total available:', allPlayers.length);
-
-    const start = displayedPlayers;
-    let end;
-    
-    if (displayedPlayers === 0) {
-        // Initial load - show ranks 4-10 (7 players)
-        end = Math.min(INITIAL_TABLE_SIZE, allPlayers.length);
-        console.log('Initial load: Loading ranks 4-10');
-    } else {
-        // Scroll load - show next 10 players
-        end = Math.min(start + SCROLL_BATCH_SIZE, allPlayers.length);
-        console.log('Scroll load: Loading next batch of players');
+    let batchSize = 7;
+    // If this is a load more click, use allPlayersFull after the first 10
+    let sourcePlayers = allPlayers;
+    let start = displayedPlayers;
+    let end = Math.min(start + batchSize, allPlayers.length);
+    let rankOffset = 4;
+    // If loading more after top 10
+    if (isLoadMoreClick) {
+        sourcePlayers = allPlayersFull.slice(10 + displayedPlayers - allPlayers.length);
+        start = 0;
+        end = Math.min(batchSize, sourcePlayers.length);
+        rankOffset = displayedPlayers + 4;
     }
-
-    console.log('Loading players from index', start, 'to', end);
-    
-    // Add new players
     for (let i = start; i < end; i++) {
-        const player = allPlayers[i];
+        const player = sourcePlayers[i];
+        if (!player) continue;
         const row = tbody.insertRow();
-        const playerRank = i + 4; // Add 4 because we start after podium (ranks 1-3)
-        
+        const playerRank = rankOffset + i;
         row.innerHTML = `
             <td>${playerRank}</td>
             <td>
@@ -437,22 +517,13 @@ function loadMorePlayers() {
             <td>${player.score}</td>
             <td>${player.displaytime}</td>
         `;
-
-        // Add fade-in animation
         row.style.opacity = '0';
         row.style.animation = 'fadeIn 0.5s forwards';
     }
-    
-    displayedPlayers = end;
-    console.log('Updated displayed players count to:', displayedPlayers);
-
-    // Update loading indicator visibility
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    if (loadingIndicator) {
-        const hasMorePlayers = displayedPlayers < allPlayers.length;
-        loadingIndicator.style.display = hasMorePlayers ? 'block' : 'none';
-        console.log('Loading indicator:', hasMorePlayers ? 'shown' : 'hidden');
-    }
+    displayedPlayers += (end - start);
+    // If there are more players to load, show button, else hide
+    const moreToLoad = allPlayersFull.length > (10 + displayedPlayers - allPlayers.length);
+    showLoadMoreButton(moreToLoad);
 }
 
 // Toggle visibility of table
@@ -701,20 +772,21 @@ async function updateDashboard(players, location, updatedPlayer = null) {
         console.log('Updated player not in top 10, skipping dashboard update');
         return;
     }
-    console.log('Updating dashboard with players:', players.length);
-    const top3Players = players.slice(0, 3);
+    // Store all players for load more
+    allPlayersFull = players;
+    // Only show top 10 initially
+    const top10 = players.slice(0, 10);
+    const top3Players = top10.slice(0, 3);
     updatePodium(top3Players, location);
-    allPlayers = players.slice(3);
+    allPlayers = top10.slice(3); // 4-10 for table
     displayedPlayers = 0;
     const tbody = document.querySelector('.leaderboard-table tbody');
     if (tbody) {
-        if (allPlayers.length > 0) {
-            tbody.innerHTML = '';
-            loadMorePlayers();
-        } else if (players.length === 0) {
-            showNoDataMessage(tbody);
-        }
+        tbody.innerHTML = '';
+        loadMorePlayers();
     }
+    // Show/hide load more button
+    showLoadMoreButton(players.length > 10);
     checkForPositionChanges(players);
 }
 
