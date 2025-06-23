@@ -265,19 +265,13 @@ function showCelebrationText(x, y, text) {
     const celebration = document.createElement('div');
     celebration.className = 'celebration-text';
     celebration.textContent = text;
-    
-    // Center horizontally and position above the target
     celebration.style.left = '50%';
     celebration.style.top = `${Math.max(20, y - 100)}px`;
     celebration.style.transform = 'translateX(-50%)';
-    
-    // Add emojis for extra flair
     celebration.innerHTML = `✨ ${text} ✨`;
-    
     document.body.appendChild(celebration);
-    
-    // Remove celebration text after animation
-    setTimeout(() => celebration.remove(), 2000);
+    // Remove celebration text after longer animation (now 6000ms)
+    setTimeout(() => celebration.remove(), 6000);
 }
 
 // Enhanced celebration for position change
@@ -580,35 +574,30 @@ function updatePodium(topPlayers, location) {
     function updateSlotTabs(slotsData, activeSlotId) {
         const slotTabs = document.getElementById('slotTabs');
         slots = slotsData;
-        
-        // Only update currentSlotId if we don't have one yet or if we're on the active slot
         if (!currentSlotId || currentSlotId === activeSlotId) {
             currentSlotId = activeSlotId;
         }
-
-        // Clear existing tabs
-        slotTabs.innerHTML = '';// Add tabs for each slot
-    slots.forEach(slot => {
-        const tab = document.createElement('button');
-        tab.className = `slot-tab${slot.id === currentSlotId ? ' active' : ''}${slot.status === 'active' ? ' active-slot' : ''}`;
-        
-        // Create slot name with status indicator
-        let statusEmoji = slot.status === 'active' ? '🟢' : '⭕';
-        let statusText = slot.status === 'active' ? 'Active' : 'Completed';
-        
-        tab.innerHTML = `
-            ${slot.name} 
-            <span class="slot-status">${statusEmoji} ${statusText}</span>
-            <div class="slot-info">
-                ${new Date(slot.start_time).toLocaleDateString()} 
-                ${slot.duration ? `- ${slot.duration}` : ''}
-            </div>
-        `;
-        
-        tab.onclick = () => loadSlotData(slot.id);
-        slotTabs.appendChild(tab);
-    });
-}
+        slotTabs.innerHTML = '';
+        slots.forEach(slot => {
+            const tab = document.createElement('button');
+            tab.className = `slot-tab${slot.id === currentSlotId ? ' active' : ''}${slot.status === 'active' ? ' active-slot' : ''}`;
+            let statusEmoji = slot.status === 'active' ? '🟢' : '⭕';
+            let statusText = slot.status === 'active' ? 'Active' : 'Completed';
+            // Show start date and time, and duration if completed
+            const startDate = new Date(slot.start_time);
+            const startDateString = `${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            tab.innerHTML = `
+                ${slot.name} 
+                <span class="slot-status">${statusEmoji} ${statusText}</span>
+                <div class="slot-info">
+                    ${startDateString}
+                    ${slot.status !== 'active' && slot.duration ? ` - ${slot.duration}` : ''}
+                </div>
+            `;
+            tab.onclick = () => loadSlotData(slot.id);
+            slotTabs.appendChild(tab);
+        });
+    }
 
 // Load data for a specific slot
 async function loadSlotData(slotId) {
