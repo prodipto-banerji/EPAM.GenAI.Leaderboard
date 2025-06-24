@@ -79,6 +79,7 @@ app.get('/', (req, res) => {
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 let db; // <-- Add this line to define db globally
+let currentSlot = null; // <-- Add this line to define currentSlot globally
 
 // Ensure database is initialized before any db access
 async function ensureDbInitialized() {
@@ -240,15 +241,36 @@ async function addPlayerToDb(playerData) {
         if (!date) {
             date = new Date().toISOString();
         }
-        // Insert new player for current slot
-        await db.run(
-            `INSERT INTO players (name, email, score, timetaken, displaytime, date, location, slot_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [playerData.name, playerData.email, playerData.score, playerData.timetaken,
-             playerData.displaytime, date, playerData.location, slotId]
+        // Check if a record exists for this email, slot, and location
+        const existing = await db.get(
+            `SELECT * FROM players WHERE email = ? AND slot_id = ? AND location = ?`,
+            [playerData.email, slotId, playerData.location]
         );
-
-        return true;
+        if (existing) {
+            // Only update if new score is higher, or same score but less time
+            if (
+                playerData.score > existing.score ||
+                (playerData.score === existing.score && playerData.timetaken < existing.timetaken)
+            ) {
+                await db.run(
+                    `UPDATE players SET name = ?, score = ?, timetaken = ?, displaytime = ?, date = ? WHERE id = ?`,
+                    [playerData.name, playerData.score, playerData.timetaken, playerData.displaytime, date, existing.id]
+                );
+                return 'updated';
+            } else {
+                // No update needed
+                return false;
+            }
+        } else {
+            // Insert new player for current slot
+            await db.run(
+                `INSERT INTO players (name, email, score, timetaken, displaytime, date, location, slot_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [playerData.name, playerData.email, playerData.score, playerData.timetaken,
+                 playerData.displaytime, date, playerData.location, slotId]
+            );
+            return true;
+        }
     } catch (error) {
         console.error('Error in addPlayerToDb:', error);
         throw error;
@@ -586,16 +608,38 @@ async function getLastCompletedSlot() {
     }
 }
 
+// Cache for last sent top 10 per location
+const lastTop10Cache = {}
+
 // Broadcast rankings to all connected clients for a specific location
 async function broadcastRankings(location) {
     try {
         const players = await getPlayersForLocation(location, currentSlot?.id);
+        const top10 = players.slice(0, 10);
+        const prevTop10 = lastTop10Cache[location];
+        // Compare top 10: if unchanged, do not broadcast
+        let changed = false;
+        if (!prevTop10 || prevTop10.length !== top10.length) {
+            changed = true;
+        } else {
+            for (let i = 0; i < top10.length; i++) {
+                if (!prevTop10[i] || prevTop10[i].email !== top10[i].email || prevTop10[i].score !== top10[i].score || prevTop10[i].timetaken !== top10[i].timetaken) {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if (!changed) {
+            // No change in top 10, do not broadcast
+            return;
+        }
+        // Update cache
+        lastTop10Cache[location] = top10.map(p => ({ email: p.email, score: p.score, timetaken: p.timetaken }));
         const message = JSON.stringify({
             type: 'rankings',
             location: location,
             players: players
         });
-
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN && getClientLocation(client) === location) {
                 client.send(message);
