@@ -772,6 +772,18 @@ html {
             border-color: #ff9800;
         }
 
+        .slot-tab.inactive-slot {
+            background: #e0e0e0;
+            color: #888;
+            border-color: #bdbdbd;
+        }
+
+        .slot-tab.inactive-slot.active {
+            background: #b0b0b0;
+            color: #fff;
+            border-color: #888;
+        }
+
         .slot-info {
             font-size: 0.9em;
             color: #666;

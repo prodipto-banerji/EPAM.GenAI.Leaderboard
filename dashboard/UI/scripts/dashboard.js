@@ -412,6 +412,7 @@ async function updateDashboard(players, location, updatedPlayer = null) {
         showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
         return;
     }
+    // If updatedPlayer is provided, only update if that player is in the new top 10
     if (updatedPlayer && !isPlayerInTop10(updatedPlayer, players)) {
         console.log('Updated player not in top 10, skipping dashboard update');
         return;
@@ -646,13 +647,26 @@ function updatePodium(topPlayers, location) {
     function updateSlotTabs(slotsData, activeSlotId) {
         const slotTabs = document.getElementById('slotTabs');
         slots = slotsData;
-        if (!currentSlotId || currentSlotId === activeSlotId) {
+        // If no active slot, pick the latest slot (first in sorted list)
+        let latestSlotId = null;
+        if (!activeSlotId && slots.length > 0) {
+            // Assume slots are sorted by start_time DESC from backend
+            latestSlotId = slots[0].id;
+        }
+        // Set currentSlotId to active or latest
+        if (activeSlotId) {
             currentSlotId = activeSlotId;
+        } else if (latestSlotId) {
+            currentSlotId = latestSlotId;
         }
         slotTabs.innerHTML = '';
         slots.forEach(slot => {
+            let tabClass = 'slot-tab';
+            if (slot.id === currentSlotId) tabClass += ' active';
+            if (slot.status === 'active') tabClass += ' active-slot';
+            if (slot.status === 'completed') tabClass += ' inactive-slot';
             const tab = document.createElement('button');
-            tab.className = `slot-tab${slot.id === currentSlotId ? ' active' : ''}${slot.status === 'active' ? ' active-slot' : ''}`;
+            tab.className = tabClass;
             let statusEmoji = slot.status === 'active' ? '🟢' : '⭕';
             let statusText = slot.status === 'active' ? 'Active' : 'Completed';
             // Show start date and time, and duration if completed
@@ -666,9 +680,17 @@ function updatePodium(topPlayers, location) {
                     ${slot.status !== 'active' && slot.duration ? ` - ${slot.duration}` : ''}
                 </div>
             `;
-            tab.onclick = () => loadSlotData(slot.id);
+            tab.onclick = () => {
+                currentSlotId = slot.id;
+                loadSlotData(slot.id);
+                updateSlotTabs(slots, currentSlotId);
+            };
             slotTabs.appendChild(tab);
         });
+        // If no active slot, load latest slot data and highlight its tab
+        if (!activeSlotId && latestSlotId) {
+            loadSlotData(latestSlotId);
+        }
     }
 
 // Load data for a specific slot
@@ -831,7 +853,7 @@ function updateGameStatus(status) {
     } else if (status.active) {
         // Active game session
         gameStatusDiv.className = 'game-status active';
-        gameStatusMessage.textContent = `Game Session "${status.slotName}" is active!`;
+        gameStatusMessage.textContent = `Game Session "${status.slotName}" is inactive!`;
         gameStatusDiv.style.display = 'none';
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
