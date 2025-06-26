@@ -37,7 +37,7 @@ class WebSocketService {
                                 active: !!activeSlot,
                                 slotName: activeSlot?.name,
                                 message: activeSlot ? 
-                                    `Game Session "${activeSlot.name}" is active!` : 
+                                    `Game Session "${activeSlot.name}" is inactive!` : 
                                     'Waiting for game session to start...',
                                 slots: slots,
                                 activeSlotId: activeSlot?.id

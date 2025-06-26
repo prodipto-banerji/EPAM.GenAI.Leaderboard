@@ -4,14 +4,14 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
-const Ranker = require('../Model/Ranker');
-const DatabaseService = require('../services/DatabaseService');
-const WebSocketService = require('../services/WebSocketService');
-const ApiRouter = require('../routes/ApiRouter');
+const Ranker = require('./Model/Ranker');
+const DatabaseService = require('./services/DatabaseService');
+const WebSocketService = require('./services/WebSocketService');
+const ApiRouter = require('./routes/ApiRouter');
 
 // Constants for paths
 const DB_PATH = path.join(__dirname, 'leaderboard.db');
-const UI_PATH = path.join(__dirname, '../UI');
+const UI_PATH = path.join(__dirname, './UI');
 
 // Initialize Express app and HTTP server
 const app = express();
@@ -48,6 +48,7 @@ app.use((req, res, next) => {
 
 // Initialize services
 const databaseService = new DatabaseService(DB_PATH);
+let wss; // <-- Expose wss for use in this file
 
 // Create an async function to initialize the server
 async function initializeServer() {
@@ -58,6 +59,7 @@ async function initializeServer() {
         // Then initialize other services that depend on the database
         const ranker = new Ranker();
         const webSocketService = new WebSocketService(server, databaseService, ranker);
+        wss = webSocketService.wss; // <-- Expose wss for use in this file
         const apiRouter = new ApiRouter(databaseService, webSocketService);
 
         // Set up routes
@@ -74,18 +76,18 @@ app.get('/', (req, res) => {
 }
 
 // Database helper functions
-async function initializeDatabase() {
-    try {
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
+let db; // <-- Add this line to define db globally
+let currentSlot = null; // <-- Add this line to define currentSlot globally
+
+// Ensure database is initialized before any db access
+async function ensureDbInitialized() {
+    if (!db) {
         db = await open({
             filename: DB_PATH,
             driver: sqlite3.Database
         });
-        
-        // Create necessary tables
-        await createTables();
-    } catch (error) {
-        console.error('Error initializing database:', error);
-        throw error;
     }
 }
 
@@ -128,6 +130,7 @@ async function createTables() {
 // Get all slots with their status
 async function getAllSlots() {
     try {
+        await ensureDbInitialized();
         return await db.all(`
             SELECT 
                 id,
@@ -152,6 +155,7 @@ async function getAllSlots() {
 // Get current active slot
 async function getActiveSlot() {
     try {
+        await ensureDbInitialized();
         return await db.get(`
             SELECT id, name, datetime(start_time) as start_time
             FROM slots 
@@ -168,6 +172,7 @@ async function getActiveSlot() {
 // Function to get players for a specific slot
 async function getPlayersForSlot(slotId, location = null) {
     try {
+        await ensureDbInitialized();
         const params = [slotId];
         let query = 'SELECT p.*, s.name as slot_name, s.status as slot_status ' +
                    'FROM players p ' +
@@ -191,6 +196,7 @@ async function getPlayersForSlot(slotId, location = null) {
 // Function to get top players across all slots
 async function getTopPlayersAcrossSlots() {
     try {
+        await ensureDbInitialized();
         // Get the best score for each player across all slots
         const query = `
             SELECT 
@@ -223,23 +229,48 @@ async function getTopPlayersAcrossSlots() {
 // Add player to database
 async function addPlayerToDb(playerData) {
     try {
+        await ensureDbInitialized();
         // Get the active slot
         const activeSlot = await getActiveSlot();
         if (!activeSlot) {
             throw new Error('No active slot available');
         }
-
         const slotId = activeSlot.id;
-
-        // Insert new player for current slot
-        await db.run(
-            `INSERT INTO players (name, email, score, timetaken, displaytime, date, location, slot_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [playerData.name, playerData.email, playerData.score, playerData.timetaken,
-             playerData.displaytime, playerData.date, playerData.location, slotId]
+        // Ensure date is present, fallback to now if missing
+        let date = playerData.date;
+        if (!date) {
+            date = new Date().toISOString();
+        }
+        // Check if a record exists for this email, slot, and location
+        const existing = await db.get(
+            `SELECT * FROM players WHERE email = ? AND slot_id = ? AND location = ?`,
+            [playerData.email, slotId, playerData.location]
         );
-
-        return true;
+        if (existing) {
+            // Only update if new score is higher, or same score but less time
+            if (
+                playerData.score > existing.score ||
+                (playerData.score === existing.score && playerData.timetaken < existing.timetaken)
+            ) {
+                await db.run(
+                    `UPDATE players SET name = ?, score = ?, timetaken = ?, displaytime = ?, date = ? WHERE id = ?`,
+                    [playerData.name, playerData.score, playerData.timetaken, playerData.displaytime, date, existing.id]
+                );
+                return 'updated';
+            } else {
+                // No update needed
+                return false;
+            }
+        } else {
+            // Insert new player for current slot
+            await db.run(
+                `INSERT INTO players (name, email, score, timetaken, displaytime, date, location, slot_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [playerData.name, playerData.email, playerData.score, playerData.timetaken,
+                 playerData.displaytime, date, playerData.location, slotId]
+            );
+            return true;
+        }
     } catch (error) {
         console.error('Error in addPlayerToDb:', error);
         throw error;
@@ -249,6 +280,7 @@ async function addPlayerToDb(playerData) {
 // Get players for a specific location from the database
 async function getPlayersForLocation(location, slotId = null) {
     try {
+        await ensureDbInitialized();
         let query = `
             SELECT p.*, s.name as slot_name
             FROM players p
@@ -277,7 +309,7 @@ async function getPlayersForLocation(location, slotId = null) {
             params.push(location); // Add location twice for both conditions
         }
 
-        query += ` ORDER BY p.score DESC, p.timetaken ASC`;
+        query += ` ORDER BY p1.score DESC, p1.timetaken ASC`;
         
         return await db.all(query, params);
     } catch (error) {
@@ -437,121 +469,6 @@ app.get('/api/players/top', async (req, res) => {
         });
     }
 });
-
-// Slot management functions
-async function startSlot(slotName) {
-    try {
-        // First check if there are any active slots in the database
-        const activeSlot = await db.get('SELECT * FROM slots WHERE status = ?', ['active']);
-        if (activeSlot) {
-            throw new Error('Another slot is currently active in the database');
-        }
-
-        // Begin transaction
-        await db.run('BEGIN TRANSACTION');
-        
-        try {
-            const result = await db.run(
-                'INSERT INTO slots (name, status, start_time) VALUES (?, ?, ?)',
-                [slotName, 'active', new Date().toISOString()]
-            );
-            
-            currentSlot = {
-                id: result.lastID,
-                name: slotName,
-                startTime: new Date()
-            };
-
-            // Clear previous rankings
-            ranker = new Ranker();
-
-            // Broadcast the game state change
-            await broadcastGameStateChange({
-                active: true,
-                slotName: slotName,
-                message: `Game Session "${slotName}" is active!`
-            }, currentSlot);
-
-            await db.run('COMMIT');
-            return currentSlot;
-        } catch (error) {
-            await db.run('ROLLBACK');
-            throw error;
-        }
-    } catch (error) {
-        console.error('Error starting slot:', error);
-        throw error;
-    }
-}
-
-async function stopSlot(slotName) {
-    try {
-        if (!currentSlot || currentSlot.name !== slotName) {
-            throw new Error('No matching active slot found');
-        }
-
-        const endTime = new Date();
-        
-        // Begin transaction
-        await db.run('BEGIN TRANSACTION');
-        
-        try {
-            // Update slot end time and status
-            await db.run(
-                'UPDATE slots SET status = ?, end_time = ? WHERE id = ? AND status = ?',
-                ['completed', endTime.toISOString(), currentSlot.id, 'active']
-            );            // Get slot duration with proper date formatting
-            const slotInfo = await db.get(`
-                SELECT 
-                    name,
-                    datetime(start_time) as start_time,
-                    datetime(end_time) as end_time,
-                    CASE 
-                        WHEN (strftime('%s', end_time) - strftime('%s', start_time)) / 3600 >= 1 
-                        THEN strftime('%H:%M:%S', julianday(end_time) - julianday(start_time)) 
-                        ELSE strftime('%M:%S', julianday(end_time) - julianday(start_time)) 
-                    END as duration
-                FROM slots 
-                WHERE id = ?
-            `, [currentSlot.id]);
-
-            // Get top 3 winners
-            const winners = await db.all(`
-                SELECT name, email, score, displaytime
-                FROM players
-                WHERE slot_id = ?
-                ORDER BY score DESC, timetaken ASC
-                LIMIT 3
-            `, [currentSlot.id]);
-
-            // Store slot info before clearing currentSlot
-            const stoppedSlotInfo = {
-                ...slotInfo,
-                id: currentSlot.id
-            };
-
-            // Clear current slot
-            currentSlot = null;
-
-            // Broadcast the game state change
-            await broadcastGameStateChange({
-                active: false,
-                slotName: slotName,
-                message: 'No active game session. Please wait for the next game to start.'
-            }, stoppedSlotInfo);
-
-            await db.run('COMMIT');
-            return winners;
-        } catch (error) {
-            await db.run('ROLLBACK');
-            throw error;
-        }
-    } catch (error) {
-        console.error('Error stopping slot:', error);
-        throw error;
-    }
-}
-
 // Get the last completed slot information
 async function getLastCompletedSlot() {
     try {
@@ -562,7 +479,7 @@ async function getLastCompletedSlot() {
                 CASE 
                     WHEN (strftime('%s', end_time) - strftime('%s', start_time)) / 3600 >= 1 
                     THEN strftime('%H:%M:%S', julianday(end_time) - julianday(start_time)) 
-                    ELSE strftime('%M:%S', julianday(end_time) - julianday(start_time)) 
+                    ELSE strftime('%M:%S', julianday(end_time) - julianday(startTime)) 
                 END as duration
             FROM slots 
             WHERE status = 'completed' 
@@ -576,16 +493,38 @@ async function getLastCompletedSlot() {
     }
 }
 
+// Cache for last sent top 10 per location
+const lastTop10Cache = {}
+
 // Broadcast rankings to all connected clients for a specific location
 async function broadcastRankings(location) {
     try {
         const players = await getPlayersForLocation(location, currentSlot?.id);
+        const top10 = players.slice(0, 10);
+        const prevTop10 = lastTop10Cache[location];
+        // Compare top 10: if unchanged, do not broadcast
+        let changed = false;
+        if (!prevTop10 || prevTop10.length !== top10.length) {
+            changed = true;
+        } else {
+            for (let i = 0; i < top10.length; i++) {
+                if (!prevTop10[i] || prevTop10[i].email !== top10[i].email || prevTop10[i].score !== top10[i].score || prevTop10[i].timetaken !== top10[i].timetaken) {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if (!changed) {
+            // No change in top 10, do not broadcast
+            return;
+        }
+        // Update cache
+        lastTop10Cache[location] = top10.map(p => ({ email: p.email, score: p.score, timetaken: p.timetaken }));
         const message = JSON.stringify({
             type: 'rankings',
             location: location,
             players: players
         });
-
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN && getClientLocation(client) === location) {
                 client.send(message);
@@ -595,41 +534,6 @@ async function broadcastRankings(location) {
         console.error('Error broadcasting rankings:', error);
     }
 }
-
-// Broadcast game status to all clients
-async function broadcastGameStatus(isActive, slotInfo = null) {
-    // Check if any slots exist
-    const allSlots = await getAllSlots();
-    const hasSlots = allSlots.length > 0;
-
-    const message = JSON.stringify({
-        type: 'gameStatus',
-        status: {
-            active: isActive,
-            slotName: slotInfo ? slotInfo.name : null,
-            message: !hasSlots 
-                ? 'Game has not started yet. Please wait for the first game session.'
-                : isActive 
-                    ? `Game Session "${slotInfo.name}" is active!` 
-                    : 'No active game session. Please wait for the next game to start.',
-            hasSlots: hasSlots,
-            lastSlotInfo: !isActive && slotInfo ? {
-                name: slotInfo.name,
-                startTime: slotInfo.startTime,
-                endTime: slotInfo.endTime || new Date().toISOString(),
-                duration: slotInfo.duration
-            } : null
-        }
-    });
-
-    // Send to all connected clients
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-        }
-    });
-}
-
 // Broadcast to all WebSocket clients
 function broadcastToAll(data) {
     console.log('Broadcasting to all clients:', data);
@@ -654,27 +558,34 @@ function broadcastToAll(data) {
 // Broadcast game state change
 async function broadcastGameStateChange(status, slotInfo = null) {
     console.log('Broadcasting game state change:', { status, slotInfo });
-    
     // Get last completed slot if game is stopping
     const lastSlot = !status.active ? await getLastCompletedSlot() : null;
-    
     // Get winners if game is stopping
-    const winners = !status.active && currentSlot ? await db.all(`
+    const winners = !status.active && slotInfo ? await db.all(`
         SELECT name, email, score, displaytime
         FROM players
         WHERE slot_id = ?
         ORDER BY score DESC, timetaken ASC
         LIMIT 3
-    `, [currentSlot.id]) : [];
-    
+    `, [slotInfo.id]) : [];
+    // Compose a detailed message for inactive session
+    let message = status.message;
+    if (!status.active && lastSlot) {
+        message = `Game session "${lastSlot.name}" is now completed.\nStarted: ${lastSlot.start_time}\nEnded: ${lastSlot.end_time}\nDuration: ${lastSlot.duration}`;
+    }
+    // Get all slots for slot tab update
+    const allSlots = await getAllSlots();
     const gameStatus = {
         type: 'gameStatus',
         status: {
             active: status.active,
             slotName: status.slotName,
-            message: status.message,
+            message: message,
             lastSlotInfo: lastSlot,
-            winners: winners // Include winners in the broadcast
+            winners: winners, // Include winners in the broadcast
+            hasSlots: allSlots.length > 0,
+            slots: allSlots,
+            activeSlotId: status.active ? slotInfo?.id : null
         }
     };
 

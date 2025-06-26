@@ -104,8 +104,8 @@ function connectWebSocket(location) {
             switch (data.type) {
                 case 'rankings':
                     if (data.location === currentLocation) {
-                        console.log('Updating dashboard with new rankings:', data.players);
-                        updateDashboard(data.players, data.location);
+                        // If data.updatedPlayer exists, pass it; else, pass null
+                        updateDashboard(data.players, data.location, data.updatedPlayer || null);
                     }
                     break;
 
@@ -143,7 +143,8 @@ function connectWebSocket(location) {
                         ws.send(JSON.stringify({ 
                             type: 'getRankings', 
                             location: currentLocation,
-                            slotId: currentSlotId 
+                            slotId: currentSlotId,
+                            updatedPlayer: data.player || null // Pass player if available
                         }));
                     }
                     break;
@@ -265,19 +266,13 @@ function showCelebrationText(x, y, text) {
     const celebration = document.createElement('div');
     celebration.className = 'celebration-text';
     celebration.textContent = text;
-    
-    // Center horizontally and position above the target
     celebration.style.left = '50%';
     celebration.style.top = `${Math.max(20, y - 100)}px`;
     celebration.style.transform = 'translateX(-50%)';
-    
-    // Add emojis for extra flair
     celebration.innerHTML = `✨ ${text} ✨`;
-    
     document.body.appendChild(celebration);
-    
-    // Remove celebration text after animation
-    setTimeout(() => celebration.remove(), 2000);
+    // Remove celebration text after longer animation (now 6000ms)
+    setTimeout(() => celebration.remove(), 6000);
 }
 
 // Enhanced celebration for position change
@@ -403,34 +398,115 @@ function handleScroll() {
 const INITIAL_TABLE_SIZE = 7;  // Players 4-10 (after podium)
 const SCROLL_BATCH_SIZE = 10;  // Load 10 players at a time when scrolling
 
-// Load more players
-function loadMorePlayers() {
+// Store all players for load more
+let allPlayersFull = [];
+
+// Update dashboard to only show top 10 (3 podium, 7 table), rest on load more
+async function updateDashboard(players, location, updatedPlayer = null) {
+    if (location !== currentLocation) {
+        console.log('Location mismatch, skipping update');
+        return;
+    }
+    if (!Array.isArray(players)) {
+        console.error('Invalid players data received');
+        showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+        return;
+    }
+    // If updatedPlayer is provided, only update if that player is in the new top 10
+    if (updatedPlayer && !isPlayerInTop10(updatedPlayer, players)) {
+        console.log('Updated player not in top 10, skipping dashboard update');
+        return;
+    }
+    // Store all players for load more
+    allPlayersFull = players;
+    // Only show top 10 initially
+    const top10 = players.slice(0, 10);
+    const top3Players = top10.slice(0, 3);
+    updatePodium(top3Players, location);
+    allPlayers = top10.slice(3); // 4-10 for table
+    displayedPlayers = 0;
+    const tbody = document.querySelector('.leaderboard-table tbody');
+    if (tbody) {
+        tbody.innerHTML = '';
+        loadMorePlayers();
+    }
+    // Show/hide load more button
+    showLoadMoreButton(players.length > 10);
+    checkForPositionChanges(players);
+}
+
+// Add a load more button below the table with improved style
+function showLoadMoreButton(show) {
+    let btn = document.getElementById('loadMoreBtn');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'loadMoreBtn';
+        btn.textContent = 'Load More';
+        btn.style.display = 'none';
+        btn.className = 'load-more-btn stylish-load-more';
+        btn.onclick = () => {
+            loadMorePlayers(true);
+        };
+        const table = document.querySelector('.leaderboard-table');
+        if (table && table.parentNode) {
+            table.parentNode.appendChild(btn);
+        }
+    }
+    btn.style.display = show ? 'block' : 'none';
+}
+
+// Add CSS for stylish load more button
+(function addLoadMoreBtnStyles() {
+    if (document.getElementById('loadMoreBtnStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'loadMoreBtnStyles';
+    style.textContent = `
+        .stylish-load-more {
+            margin: 32px auto 24px auto;
+            display: block;
+            padding: 14px 36px;
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
+            border: none;
+            border-radius: 32px;
+            box-shadow: 0 4px 16px rgba(80, 120, 255, 0.15);
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            letter-spacing: 1px;
+        }
+        .stylish-load-more:hover, .stylish-load-more:focus {
+            background: linear-gradient(90deg, #2575fc 0%, #6a11cb 100%);
+            transform: translateY(-2px) scale(1.04);
+            box-shadow: 0 8px 24px rgba(80, 120, 255, 0.22);
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
+// Load more players (7 at a time)
+function loadMorePlayers(isLoadMoreClick = false) {
     const tbody = document.querySelector('.leaderboard-table tbody');
     if (!tbody) return;
-
-    console.log('Loading more players. Currently displayed:', displayedPlayers, 'Total available:', allPlayers.length);
-
-    const start = displayedPlayers;
-    let end;
-    
-    if (displayedPlayers === 0) {
-        // Initial load - show ranks 4-10 (7 players)
-        end = Math.min(INITIAL_TABLE_SIZE, allPlayers.length);
-        console.log('Initial load: Loading ranks 4-10');
-    } else {
-        // Scroll load - show next 10 players
-        end = Math.min(start + SCROLL_BATCH_SIZE, allPlayers.length);
-        console.log('Scroll load: Loading next batch of players');
+    let batchSize = 7;
+    // If this is a load more click, use allPlayersFull after the first 10
+    let sourcePlayers = allPlayers;
+    let start = displayedPlayers;
+    let end = Math.min(start + batchSize, allPlayers.length);
+    let rankOffset = 4;
+    // If loading more after top 10
+    if (isLoadMoreClick) {
+        sourcePlayers = allPlayersFull.slice(10 + displayedPlayers - allPlayers.length);
+        start = 0;
+        end = Math.min(batchSize, sourcePlayers.length);
+        rankOffset = displayedPlayers + 4;
     }
-
-    console.log('Loading players from index', start, 'to', end);
-    
-    // Add new players
     for (let i = start; i < end; i++) {
-        const player = allPlayers[i];
+        const player = sourcePlayers[i];
+        if (!player) continue;
         const row = tbody.insertRow();
-        const playerRank = i + 4; // Add 4 because we start after podium (ranks 1-3)
-        
+        const playerRank = rankOffset + i;
         row.innerHTML = `
             <td>${playerRank}</td>
             <td>
@@ -442,22 +518,13 @@ function loadMorePlayers() {
             <td>${player.score}</td>
             <td>${player.displaytime}</td>
         `;
-
-        // Add fade-in animation
         row.style.opacity = '0';
         row.style.animation = 'fadeIn 0.5s forwards';
     }
-    
-    displayedPlayers = end;
-    console.log('Updated displayed players count to:', displayedPlayers);
-
-    // Update loading indicator visibility
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    if (loadingIndicator) {
-        const hasMorePlayers = displayedPlayers < allPlayers.length;
-        loadingIndicator.style.display = hasMorePlayers ? 'block' : 'none';
-        console.log('Loading indicator:', hasMorePlayers ? 'shown' : 'hidden');
-    }
+    displayedPlayers += (end - start);
+    // If there are more players to load, show button, else hide
+    const moreToLoad = allPlayersFull.length > (10 + displayedPlayers - allPlayers.length);
+    showLoadMoreButton(moreToLoad);
 }
 
 // Toggle visibility of table
@@ -580,35 +647,51 @@ function updatePodium(topPlayers, location) {
     function updateSlotTabs(slotsData, activeSlotId) {
         const slotTabs = document.getElementById('slotTabs');
         slots = slotsData;
-        
-        // Only update currentSlotId if we don't have one yet or if we're on the active slot
-        if (!currentSlotId || currentSlotId === activeSlotId) {
-            currentSlotId = activeSlotId;
+        // If no active slot, pick the latest slot (first in sorted list)
+        let latestSlotId = null;
+        if (!activeSlotId && slots.length > 0) {
+            // Assume slots are sorted by start_time DESC from backend
+            latestSlotId = slots[0].id;
         }
-
-        // Clear existing tabs
-        slotTabs.innerHTML = '';// Add tabs for each slot
-    slots.forEach(slot => {
-        const tab = document.createElement('button');
-        tab.className = `slot-tab${slot.id === currentSlotId ? ' active' : ''}${slot.status === 'active' ? ' active-slot' : ''}`;
-        
-        // Create slot name with status indicator
-        let statusEmoji = slot.status === 'active' ? '🟢' : '⭕';
-        let statusText = slot.status === 'active' ? 'Active' : 'Completed';
-        
-        tab.innerHTML = `
-            ${slot.name} 
-            <span class="slot-status">${statusEmoji} ${statusText}</span>
-            <div class="slot-info">
-                ${new Date(slot.start_time).toLocaleDateString()} 
-                ${slot.duration ? `- ${slot.duration}` : ''}
-            </div>
-        `;
-        
-        tab.onclick = () => loadSlotData(slot.id);
-        slotTabs.appendChild(tab);
-    });
-}
+        // Set currentSlotId to active or latest
+        if (activeSlotId) {
+            currentSlotId = activeSlotId;
+        } else if (latestSlotId) {
+            currentSlotId = latestSlotId;
+        }
+        slotTabs.innerHTML = '';
+        slots.forEach(slot => {
+            let tabClass = 'slot-tab';
+            if (slot.id === currentSlotId) tabClass += ' active';
+            if (slot.status === 'active') tabClass += ' active-slot';
+            if (slot.status === 'completed') tabClass += ' inactive-slot';
+            const tab = document.createElement('button');
+            tab.className = tabClass;
+            let statusEmoji = slot.status === 'active' ? '🟢' : '⭕';
+            let statusText = slot.status === 'active' ? 'Active' : 'Completed';
+            // Show start date and time, and duration if completed
+            const startDate = new Date(slot.start_time);
+            const startDateString = `${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            tab.innerHTML = `
+                ${slot.name} 
+                <span class="slot-status">${statusEmoji} ${statusText}</span>
+                <div class="slot-info">
+                    ${startDateString}
+                    ${slot.status !== 'active' && slot.duration ? ` - ${slot.duration}` : ''}
+                </div>
+            `;
+            tab.onclick = () => {
+                currentSlotId = slot.id;
+                loadSlotData(slot.id);
+                updateSlotTabs(slots, currentSlotId);
+            };
+            slotTabs.appendChild(tab);
+        });
+        // If no active slot, load latest slot data and highlight its tab
+        if (!activeSlotId && latestSlotId) {
+            loadSlotData(latestSlotId);
+        }
+    }
 
 // Load data for a specific slot
 async function loadSlotData(slotId) {
@@ -689,49 +772,43 @@ async function loadInitialData(location) {
     }
 }
 
-// Modify existing updateDashboard function to handle slot data
-async function updateDashboard(players, location) {
+// Helper: check if a player is in the top 10
+function isPlayerInTop10(player, players) {
+    if (!player || !Array.isArray(players)) return false;
+    return players.slice(0, 10).some(p => p && p.name === player.name);
+}
+
+// Modify updateDashboard to accept an optional updatedPlayer argument
+async function updateDashboard(players, location, updatedPlayer = null) {
     if (location !== currentLocation) {
         console.log('Location mismatch, skipping update');
         return;
     }
-
     if (!Array.isArray(players)) {
         console.error('Invalid players data received');
         showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
         return;
     }
-
-    console.log('Updating dashboard with players:', players.length);
-
-    // Get top 3 players for podium
-    const top3Players = players.slice(0, 3);
-    console.log('Top 3 players:', top3Players);
-
-    // Update podium with top 3
+    // If updatedPlayer is provided, only update if that player is in the new top 10
+    if (updatedPlayer && !isPlayerInTop10(updatedPlayer, players)) {
+        console.log('Updated player not in top 10, skipping dashboard update');
+        return;
+    }
+    // Store all players for load more
+    allPlayersFull = players;
+    // Only show top 10 initially
+    const top10 = players.slice(0, 10);
+    const top3Players = top10.slice(0, 3);
     updatePodium(top3Players, location);
-    
-    // Get remaining players for table (rank 4+)
-    allPlayers = players.slice(3);
-    console.log('Remaining players for table:', allPlayers.length);
-    
-    // Reset displayed players count
+    allPlayers = top10.slice(3); // 4-10 for table
     displayedPlayers = 0;
-    
-    // Update the table display
     const tbody = document.querySelector('.leaderboard-table tbody');
     if (tbody) {
-        if (allPlayers.length > 0) {
-            // Clear existing rows
-            tbody.innerHTML = '';
-            // Load initial set of players
-            loadMorePlayers();
-        } else if (players.length === 0) {
-            showNoDataMessage(tbody);
-        }
+        tbody.innerHTML = '';
+        loadMorePlayers();
     }
-    
-    // Check for position changes and celebrate if needed
+    // Show/hide load more button
+    showLoadMoreButton(players.length > 10);
     checkForPositionChanges(players);
 }
 
@@ -776,7 +853,7 @@ function updateGameStatus(status) {
     } else if (status.active) {
         // Active game session
         gameStatusDiv.className = 'game-status active';
-        gameStatusMessage.textContent = `Game Session "${status.slotName}" is active!`;
+        gameStatusMessage.textContent = `Game Session "${status.slotName}" is inactive!`;
         gameStatusDiv.style.display = 'none';
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
