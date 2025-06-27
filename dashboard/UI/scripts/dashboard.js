@@ -1008,8 +1008,17 @@ function updateGameStatus(status) {
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
         
-        // Hide leaderboard components when game is inactive
-        hideLeaderboardComponents();
+        // Keep leaderboard components visible when game ends if we have player data
+        // This ensures users can see the final results without needing to refresh
+        if (allPlayers.length > 0 || allPlayersFull.length > 0) {
+            console.log('Game ended but keeping leaderboard visible with final results');
+            showLeaderboardComponents();
+            // Add class for more compact styling when leaderboard is shown
+            gameStatusDiv.className = 'game-status inactive with-leaderboard';
+        } else {
+            // Only hide leaderboard if there's truly no data
+            hideLeaderboardComponents();
+        }
         
         // Hide any game running message when showing inactive status
         hideGameRunningMessage();
