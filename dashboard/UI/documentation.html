@@ -244,6 +244,45 @@
                 </div>
             </div>
         </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/check-email</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Check if an email has already played in the currently active slot</div>
+                <div class="parameters">
+                    <h3>Request Body</h3>
+                    <div class="parameter">
+                        <code>email</code> <span class="required">required</span>
+                        <p>The email address to check</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>{
+  "status": "success",
+  "hasPlayed": boolean,
+  "message": "string",
+  "activeSlot": {
+    "id": "number",
+    "name": "string",
+    "status": "string",
+    "start_time": "timestamp"
+  },
+  "playerData": {
+    "id": "number",
+    "name": "string",
+    "email": "string",
+    "score": "number",
+    "timetaken": "number",
+    "displaytime": "string"
+  } || null
+}</code></pre>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 </html>

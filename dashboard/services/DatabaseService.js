@@ -278,6 +278,35 @@ class DatabaseService {    constructor(dbPath) {
             throw error;
         }
     }
+
+    async checkEmailInActiveSlot(email) {
+        try {
+            const activeSlot = await this.getActiveSlot();
+            
+            if (!activeSlot) {
+                return { hasPlayed: false, message: 'No active slot found' };
+            }
+
+            const player = await this.db.get(
+                `SELECT id, name, email, score, timetaken, displaytime 
+                 FROM players 
+                 WHERE email = ? AND slot_id = ?`,
+                [email, activeSlot.id]
+            );
+
+            return {
+                hasPlayed: !!player,
+                activeSlot: activeSlot,
+                playerData: player || null,
+                message: player ? 
+                    `Email ${email} has already played in slot "${activeSlot.name}"` : 
+                    `Email ${email} has not played in slot "${activeSlot.name}" yet`
+            };
+        } catch (error) {
+            console.error('Error in checkEmailInActiveSlot:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = DatabaseService;
