@@ -691,14 +691,19 @@ function updatePodium(topPlayers, location) {
                 '<span class="status-dot"></span>' : 
                 '<span class="status-dot"></span>';
             
-            // Show only start time
+            // Show slot name and start time in IST on the same line
             const startDate = new Date(slot.start_time);
-            const startTimeString = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            // Convert to IST (UTC+5:30)
+            const istDate = new Date(startDate.getTime() + (5.5 * 60 * 60 * 1000));
+            const startTimeString = istDate.toLocaleTimeString('en-IN', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                timeZone: 'Asia/Kolkata'
+            });
             
             tab.innerHTML = `
-                ${statusDot}${slot.name}
-                <div class="slot-info">
-                    ${startTimeString}
+                <div class="slot-name-time">
+                    ${statusDot} ${slot.name} - ${startTimeString}
                 </div>
             `;
             tab.onclick = () => {

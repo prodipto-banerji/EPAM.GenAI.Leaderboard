@@ -1164,7 +1164,8 @@ html {
     transition: all 0.3s ease;
     position: relative;
     font-weight: 500;
-    min-width: 180px;
+    font-size: 1.1em;
+    min-width: 200px;
     text-align: center;
 }
 
@@ -1178,7 +1179,7 @@ html {
 }
 
 .slot-tab.active-slot .status-dot {
-    background: #4CAF50;
+    background: Green;
     box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
 }
 
@@ -1216,10 +1217,10 @@ html {
     text-transform: uppercase;
 }
 
-.slot-info {
-    font-size: 0.8em;
-    margin-top: 5px;
-    opacity: 0.8;
+.slot-name-time {
+    font-size: 1em;
+    font-weight: 500;
+    margin-top: 2px;
 }
 
         .game-status.no-slots {
