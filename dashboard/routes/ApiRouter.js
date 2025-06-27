@@ -119,6 +119,37 @@ class ApiRouter {
                 res.status(500).json({ status: 'error', message: error.message });
             }
         });
+
+        // Check if email has already played in active slot
+        this.router.post('/check-email', async (req, res) => {
+            try {
+                const { email } = req.body;
+                
+                if (!email) {
+                    return res.status(400).json({ 
+                        status: 'error', 
+                        message: 'Email is required' 
+                    });
+                }
+
+                const result = await this.databaseService.checkEmailInActiveSlot(email);
+                
+                res.json({ 
+                    status: 'success',
+                    hasPlayed: result.hasPlayed,
+                    message: result.message,
+                    activeSlot: result.activeSlot,
+                    playerData: result.playerData
+                });
+            } catch (error) {
+                console.error('Error in POST /check-email:', error);
+                res.status(500).json({ 
+                    status: 'error', 
+                    message: 'Failed to check email',
+                    error: error.message 
+                });
+            }
+        });
     }
 
     getRouter() {

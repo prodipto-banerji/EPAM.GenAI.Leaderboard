@@ -17,56 +17,78 @@
                 <button class="location-button" data-location="Hyderabad">🏰 Hyderabad</button>
                 <button class="location-button" data-location="Pune">🌄 Pune</button>
                 <button class="location-button" data-location="Chennai">🌊 Chennai</button>
-                <button class="location-button" data-location="Pune">🌄 Gurgaon</button>
-                <button class="location-button" data-location="Chennai">🌊 Bangalore</button>
+                <button class="location-button" data-location="Gurgaon">🌄 Gurgaon</button>
+                <button class="location-button" data-location="Bangalore">🌊 Bangalore</button>
             </div>
         </div>
 
         <!-- Dashboard -->
         <div class="dashboard-header">
-            <h1>🏆 Jungle Champions 🏆</h1>
-            <div class="location-display">
-                Territory: <span id="currentLocation">Not Selected</span>
-                <button class="change-location" id="changeLocationBtn">Change Territory</button>
+            <div class="header-left">
+                <img src="images/logo.png" alt="Jungle Quest Logo" class="logo">
+                <h1>Jungle Quest Leaderboard</h1>
+            </div>
+            <div class="header-center">
+                <div class="location-display">
+                    Territory: <span id="currentLocation">Not Selected</span>
+                    <button class="change-location" id="changeLocationBtn">Change Territory</button>
+                </div>
             </div>
         </div>
 
-        <!-- Slot Tabs -->
-        <div class="slot-tabs" id="slotTabs">
-            <!-- Will be filled by JavaScript -->
-        </div>
-
-        <div class="main-content">
-            <!-- Game Status Section -->
-            <div id="gameStatus" class="game-status" style="display: none;">
-                <p id="gameStatusMessage">Waiting for game session to start...</p>
-                <p id="lastGameInfo" style="display: none;"></p>
-            </div>
-
-            <!-- Podium Section -->
-            <div class="podium-section">
-                <div class="podium-container" id="podiumContainer">
+        <!-- Main Layout: Leaderboard Left, QR Code Right -->
+        <div class="dashboard-layout">
+            <!-- Left Side: Leaderboard Content -->
+            <div class="leaderboard-section">
+                <!-- Slot Tabs -->
+                <div class="slot-tabs" id="slotTabs">
                     <!-- Will be filled by JavaScript -->
+                </div>
+
+                <div class="main-content">
+                    <!-- Game Status Section -->
+                    <div id="gameStatus" class="game-status" style="display: none;">
+                        <p id="gameStatusMessage">Waiting for game session to start...</p>
+                        <p id="lastGameInfo" style="display: none;"></p>
+                    </div>
+
+                    <!-- Podium Section -->
+                    <div class="podium-section">
+                        <div class="podium-container" id="podiumContainer">
+                            <!-- Will be filled by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Leaderboard Table -->
+                    <table class="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Player</th>
+                                <th>Score</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Will be filled by JavaScript -->
+                        </tbody>
+                    </table>
+                      <!-- Loading indicator for infinite scroll -->
+                    <div id="loadingIndicator" style="display: none; text-align: center; padding: 20px;">
+                        Loading more players...
+                    </div>
                 </div>
             </div>
 
-            <!-- Leaderboard Table -->
-            <table class="leaderboard-table">
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Player</th>
-                        <th>Score</th>
-                        <th>Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Will be filled by JavaScript -->
-                </tbody>
-            </table>
-              <!-- Loading indicator for infinite scroll -->
-            <div id="loadingIndicator" style="display: none; text-align: center; padding: 20px;">
-                Loading more players...
+            <!-- Right Side: Fixed QR Code -->
+            <div class="qr-section-fixed">
+                <div class="qr-content">
+                    <img src="images/qr.png" alt="QR Code" class="qr-code-main">
+                    <div class="qr-text-section">
+                        <h3>Want to Play Jungle Quest?</h3>
+                        <p>Scan this QR code to join the adventure!</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
