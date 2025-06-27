@@ -1086,7 +1086,7 @@ html {
     border-radius: 8px;
     margin: 0 0 20px 0;
     transition: all 0.3s ease;
-    width: 100%;
+    width: 95%;
     background-color: rgba(0, 0, 0, 0.6);
     color: white;
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
@@ -1223,19 +1223,22 @@ html {
 }
 
         .game-status.no-slots {
-            background-color: #f8f9fa;
+            background: rgba(0, 0, 0, 0.8);
             border: 2px dashed #6c757d;
-            color: #6c757d;
-            padding: 20px;
+            color: #fff;
+            padding: 30px;
             text-align: center;
-            border-radius: 10px;
+            border-radius: 15px;
             margin: 20px 0;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
 
         .game-status.no-slots #gameStatusMessage {
-            font-size: 1.2em;
+            font-size: 1.5em;
             font-weight: bold;
             margin: 0;
+            color: #ffd700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
 
         /* Hide leaderboard components when no slots */
@@ -1253,7 +1256,7 @@ html {
     padding: 30px 20px;
     margin: 20px 0;
     text-align: center;
-    width: 100%;
+    width: 95%;
     max-width: 100%;
     box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
     animation: pulse-game-running 2s infinite;

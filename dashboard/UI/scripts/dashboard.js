@@ -72,6 +72,9 @@ function clearDashboard() {
     displayedPlayers = 0;
     previousTop3 = [];
     
+    // Hide leaderboard components when clearing
+    hideLeaderboardComponents();
+    
     // Update table display
     updateTableDisplay();
 }
@@ -140,11 +143,17 @@ function connectWebSocket(location) {
                     if (data.status.slots) {
                         updateSlotTabs(data.status.slots, data.status.activeSlotId);
                         
-                        // Only switch to active slot if it actually changed
-                        if (data.status.activeSlotId && 
-                            data.status.activeSlotId !== previousActiveSlotId) {
-                            console.log('Switching to active slot:', data.status.activeSlotId);
+                        // Check if we need to show "Game is Running!" message for active slot with no players
+                        if (data.status.active && data.status.activeSlotId) {
                             currentSlotId = data.status.activeSlotId;
+                            
+                            // Always show "Game is Running!" message for active games with no players
+                            // This ensures we don't show empty podium boxes while waiting for data
+                            if (allPlayers.length === 0 && allPlayersFull.length === 0) {
+                                console.log('Active game detected with no players, showing game running message');
+                                showGameRunningMessage();
+                            }
+                            
                             // Request fresh rankings with debouncing
                             const now = Date.now();
                             if (now - lastRequestTime > REQUEST_DEBOUNCE_MS) {
@@ -155,9 +164,12 @@ function connectWebSocket(location) {
                                     slotId: currentSlotId 
                                 }));
                             }
-                        } else if (!currentSlotId && data.status.activeSlotId) {
-                            // Set initial slot if we don't have one
+                        }
+                        // Handle non-active slots
+                        else if (data.status.activeSlotId) {
                             currentSlotId = data.status.activeSlotId;
+                            
+                            // Still request fresh data to ensure we're up to date
                             const now = Date.now();
                             if (now - lastRequestTime > REQUEST_DEBOUNCE_MS) {
                                 lastRequestTime = now;
@@ -167,7 +179,7 @@ function connectWebSocket(location) {
                                     slotId: currentSlotId 
                                 }));
                             }
-                        }
+                        } 
                     }
                     break;
 
@@ -566,11 +578,18 @@ function updateTableDisplay() {
     tbody.innerHTML = '';
     displayedPlayers = 0;
 
-    // If no players after top 3, show no data message
+    // If no players after top 3, check if leaderboard should be visible
     if (allPlayers.length === 0) {
         console.log('No players to display in table');
-        showNoDataMessage(tbody);
-        toggleTableVisibility(true); // Still show table with "no data" message
+        // Only show the "no data" message if leaderboard components are supposed to be visible
+        const leaderboardTable = document.querySelector('.leaderboard-table');
+        if (leaderboardTable && leaderboardTable.style.display !== 'none') {
+            showNoDataMessage(tbody);
+            toggleTableVisibility(true);
+        } else {
+            // Leaderboard is hidden, so don't show anything
+            toggleTableVisibility(false);
+        }
         return;
     }
 
@@ -701,10 +720,26 @@ async function loadSlotData(slotId) {
         console.log('Loading data for slot:', slotId);
         currentSlotId = slotId;
 
-        // Update UI to show loading state
-        const tbody = document.querySelector('.leaderboard-table tbody');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="4" class="loading-message">Loading data...</td></tr>';
+        // Check if this is an active slot by looking at our slots data
+        const activeSlot = slots.find(slot => slot.id === slotId && slot.status === 'active');
+        
+        if (activeSlot) {
+            // If we're loading an active slot and have no player data, show game running message
+            // This prevents showing empty podium while data loads
+            if (allPlayers.length === 0 && allPlayersFull.length === 0) {
+                console.log('Loading active slot with no players, showing game running message');
+                showGameRunningMessage();
+            }
+        } else {
+            // For inactive slots, clear any game running message and show components
+            hideGameRunningMessage();
+            showLeaderboardComponents();
+            
+            // Update UI to show loading state for inactive slots
+            const tbody = document.querySelector('.leaderboard-table tbody');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="4" class="loading-message">Loading data...</td></tr>';
+            }
         }
 
         // Request fresh rankings through WebSocket
@@ -758,11 +793,14 @@ async function loadInitialData(location) {
             if (Array.isArray(data.rankings) && data.rankings.length > 0) {
                 updateDashboard(data.rankings, location);
             } else {
-                showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+                // No rankings data - let the game status logic handle the display
+                console.log('No rankings data available');
+                hideLeaderboardComponents();
             }
         } else {
             console.log('Initial rankings not successful or location changed');
-            showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+            // Let the game status logic handle the display
+            hideLeaderboardComponents();
         }
 
         // Update location display
@@ -770,7 +808,8 @@ async function loadInitialData(location) {
     } catch (error) {
         console.error('Error loading initial data:', error);
         document.getElementById('currentLocation').textContent = location;
-        showNoDataMessage(document.querySelector('.leaderboard-table tbody'));
+        // Let the game status logic handle the display
+        hideLeaderboardComponents();
     }
 }
 
@@ -782,6 +821,9 @@ function showGameRunningMessage() {
     if (gameStatusDiv) {
         gameStatusDiv.style.display = 'none';
     }
+    
+    // Hide leaderboard components when showing game running message
+    hideLeaderboardComponents();
     
     const podiumContainer = document.getElementById('podiumContainer');
     const tbody = document.querySelector('.leaderboard-table tbody');
@@ -805,7 +847,7 @@ function showGameRunningMessage() {
             <p>Waiting for players to join the adventure...</p>
             <div class="play-prompt">
                 <span class="play-text">Ready to play?</span>
-                <div class="scan-qr">� Scan the QR code on the right!</div>
+                <div class="scan-qr">👉 Scan the QR code on the right!</div>
             </div>
         </div>
     `;
@@ -863,6 +905,9 @@ async function updateDashboard(players, location, updatedPlayer = null) {
     // Hide the game running message if it exists
     hideGameRunningMessage();
     
+    // Show leaderboard components since we have player data
+    showLeaderboardComponents();
+    
     // Only show top 10 initially
     const top10 = players.slice(0, 10);
     const top3Players = top10.slice(0, 3);
@@ -917,10 +962,16 @@ function updateGameStatus(status) {
     }
     
     if (!status.hasSlots) {
-        // No slots exist yet - hide game status and show custom message
-        gameStatusDiv.style.display = 'none';
+        // No slots exist yet - show waiting message
+        gameStatusDiv.className = 'game-status no-slots';
+        gameStatusDiv.style.display = 'block';
+        gameStatusMessage.textContent = 'Waiting for game session to start...';
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
+        // Hide leaderboard components when no slots
+        hideLeaderboardComponents();
+        // Hide any game running message
+        hideGameRunningMessage();
         // Only clear dashboard if we actually need to (prevent endless loop)
         if (allPlayers.length > 0) {
             clearDashboard();
@@ -931,6 +982,18 @@ function updateGameStatus(status) {
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
         
+        // For active games, immediately show "Game is Running!" message
+        // The leaderboard components will be shown only when we have actual player data
+        // This prevents showing empty podium boxes and table while waiting for data
+        if (allPlayers.length === 0 && allPlayersFull.length === 0) {
+            console.log('Active game detected with no players, showing game running message');
+            showGameRunningMessage();
+        } else {
+            // We have player data, show leaderboard components
+            showLeaderboardComponents();
+            hideGameRunningMessage();
+        }
+        
         // The showGameRunningMessage() will be called separately if no players
     } else {
         // Inactive game session - show the status message
@@ -939,6 +1002,9 @@ function updateGameStatus(status) {
         gameStatusMessage.textContent = status.message || 'Game session has ended';
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
+        
+        // Hide leaderboard components when game is inactive
+        hideLeaderboardComponents();
         
         // Hide any game running message when showing inactive status
         hideGameRunningMessage();
@@ -1001,3 +1067,36 @@ document.addEventListener('DOMContentLoaded', () => {
         selectLocation(savedLocation);
     }
 });
+
+// Helper functions to hide/show leaderboard components
+function hideLeaderboardComponents() {
+    const podiumSection = document.querySelector('.podium-section');
+    const leaderboardTable = document.querySelector('.leaderboard-table');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    
+    if (podiumSection) {
+        podiumSection.style.display = 'none';
+    }
+    if (leaderboardTable) {
+        leaderboardTable.style.display = 'none';
+    }
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+    }
+    if (loadMoreBtn) {
+        loadMoreBtn.style.display = 'none';
+    }
+}
+
+function showLeaderboardComponents() {
+    const podiumSection = document.querySelector('.podium-section');
+    const leaderboardTable = document.querySelector('.leaderboard-table');
+    
+    if (podiumSection) {
+        podiumSection.style.display = 'block';
+    }
+    if (leaderboardTable) {
+        leaderboardTable.style.display = 'table';
+    }
+}
