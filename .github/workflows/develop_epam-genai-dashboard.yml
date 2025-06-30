@@ -32,7 +32,7 @@ jobs:
           cd dashboard
           zip -r ../release.zip * .[^.]* -x "node_modules/*" ".git/*"
 
-      - name: Debug: Check ZIP contents
+      - name: Debug Check ZIP contents
         run: unzip -l release.zip
 
       - uses: actions/upload-artifact@v4
