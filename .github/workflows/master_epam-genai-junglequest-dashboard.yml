@@ -24,13 +24,12 @@ jobs:
           node-version: '22.x'
 
       - name: Install dependencies
-        working-directory: ./dashboard
+        working-directory: .
         run: npm install
 
       - name: Zip app for deployment
         run: |
-          cd dashboard
-          zip -r ../release.zip * .[^.]* -x "node_modules/*" ".git/*"
+          zip -r release.zip * .[^.]* -x "node_modules/*" ".git/*"
           
       - name: Check ZIP contents
         run: unzip -l release.zip
