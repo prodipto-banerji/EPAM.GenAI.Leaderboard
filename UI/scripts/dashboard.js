@@ -138,10 +138,40 @@ function connectWebSocket(location) {
                 case 'gameStatus':
                     console.log('Received game status update:', data.status);
                     const previousActiveSlotId = currentSlotId;
+                    const wasGameActive = previousGameActive;
+                    
                     updateGameStatus(data.status);
 
                     if (data.status.slots) {
+                        // Force update slot tabs with fresh data
                         updateSlotTabs(data.status.slots, data.status.activeSlotId);
+                        
+                        // Check if the active slot has changed (game ended) or game status changed
+                        const gameStateChanged = (previousActiveSlotId && previousActiveSlotId !== data.status.activeSlotId) ||
+                                               (wasGameActive !== data.status.active);
+                        
+                        if (gameStateChanged) {
+                            console.log('Game state changed - refreshing slot tabs');
+                            // Request fresh game status to ensure we have the latest slot data
+                            ws.send(JSON.stringify({ type: 'getGameStatus' }));
+                            
+                            // Multiple refresh attempts to ensure color changes are applied
+                            setTimeout(() => {
+                                console.log('First refresh of slot tabs');
+                                updateSlotTabs(data.status.slots, data.status.activeSlotId);
+                                forceSlotTabColorUpdate();
+                            }, 100);
+                            setTimeout(() => {
+                                console.log('Second refresh of slot tabs');
+                                updateSlotTabs(data.status.slots, data.status.activeSlotId);
+                                forceSlotTabColorUpdate();
+                            }, 300);
+                            setTimeout(() => {
+                                console.log('Final refresh of slot tabs');
+                                updateSlotTabs(data.status.slots, data.status.activeSlotId);
+                                forceSlotTabColorUpdate();
+                            }, 500);
+                        }
                         
                         // Check if we need to show "Game is Running!" message for active slot with no players
                         if (data.status.active && data.status.activeSlotId) {
@@ -665,6 +695,7 @@ function updatePodium(topPlayers, location) {
     });
 }    // Update slot tabs
     function updateSlotTabs(slotsData, activeSlotId) {
+        console.log('Updating slot tabs with data:', slotsData, 'activeSlotId:', activeSlotId);
         const slotTabs = document.getElementById('slotTabs');
         slots = slotsData;
         // If no active slot, pick the latest slot (first in sorted list)
@@ -685,11 +716,12 @@ function updatePodium(topPlayers, location) {
             if (slot.id === currentSlotId) tabClass += ' active';
             if (slot.status === 'active') tabClass += ' active-slot';
             if (slot.status === 'completed') tabClass += ' inactive-slot';
+            
+            console.log(`Slot ${slot.id} status: ${slot.status}, classes: ${tabClass}`);
+            
             const tab = document.createElement('button');
             tab.className = tabClass;
-            let statusDot = slot.status === 'active' ? 
-                '<span class="status-dot"></span>' : 
-                '<span class="status-dot"></span>';
+            let statusDot = '<span class="status-dot"></span>';
             
             // Show slot name and start time in IST on the same line
             const startDate = new Date(slot.start_time);
@@ -953,6 +985,8 @@ function checkTop10Changes(newTop10) {
 }
 
 // Update game status display
+let previousGameActive = null; // Track previous game active state
+
 function updateGameStatus(status) {
     const gameStatusDiv = document.getElementById('gameStatus');
     const gameStatusMessage = document.getElementById('gameStatusMessage');
@@ -960,6 +994,21 @@ function updateGameStatus(status) {
     const slotTabs = document.getElementById('slotTabs');
     
     if (!gameStatusDiv || !gameStatusMessage || !lastGameInfo) return;
+
+    // Check if game just transitioned from active to inactive
+    const gameJustEnded = previousGameActive === true && status.active === false;
+    previousGameActive = status.active;
+    
+    if (gameJustEnded) {
+        console.log('Game just ended, forcing slot tabs refresh');
+        // Force refresh of slot tabs to ensure color changes are applied
+        if (status.slots) {
+            setTimeout(() => {
+                updateSlotTabs(status.slots, status.activeSlotId);
+                forceSlotTabColorUpdate();
+            }, 50);
+        }
+    }
 
     // Hide slot tabs if no slots exist
     if (slotTabs) {
@@ -1113,4 +1162,26 @@ function showLeaderboardComponents() {
     if (leaderboardTable) {
         leaderboardTable.style.display = 'table';
     }
+}
+
+// Helper function to force slot tab color updates
+function forceSlotTabColorUpdate() {
+    console.log('Forcing slot tab color update');
+    const slotTabElements = document.querySelectorAll('.slot-tab');
+    slotTabElements.forEach((tab, index) => {
+        const slot = slots[index];
+        if (slot) {
+            // Remove all status classes
+            tab.classList.remove('active-slot', 'inactive-slot');
+            
+            // Re-add the correct status class based on current slot data
+            if (slot.status === 'active') {
+                tab.classList.add('active-slot');
+                console.log(`Set slot ${slot.id} to active (green)`);
+            } else if (slot.status === 'completed') {
+                tab.classList.add('inactive-slot');
+                console.log(`Set slot ${slot.id} to completed (red)`);
+            }
+        }
+    });
 }
