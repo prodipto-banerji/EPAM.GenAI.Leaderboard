@@ -55,6 +55,24 @@ class WebSocketService {
                                 await this.broadcastRankings(data.location);
                             }
                             break;
+                        case 'getGameStatus':
+                            console.log('Client requested game status update');
+                            const allSlots = await this.databaseService.getAllSlots();
+                            const currentActiveSlot = await this.databaseService.getActiveSlot();
+                            this.sendToClient(ws, JSON.stringify({
+                                type: 'gameStatus',
+                                status: {
+                                    active: !!currentActiveSlot,
+                                    slotName: currentActiveSlot?.name,
+                                    message: currentActiveSlot ? 
+                                        `Game Session "${currentActiveSlot.name}" is active!` : 
+                                        'Waiting for game session to start...',
+                                    slots: allSlots,
+                                    activeSlotId: currentActiveSlot?.id,
+                                    hasSlots: allSlots.length > 0
+                                }
+                            }));
+                            break;
                     }
                 } catch (error) {
                     console.error('Error processing WebSocket message:', error);
