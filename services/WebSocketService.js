@@ -188,11 +188,15 @@ class WebSocketService {
     }
 
     async broadcastGameState(status) {
+        // Get all slots to properly determine if there are any slots
+        const allSlots = await this.databaseService.getAllSlots();
+        
         const message = {
             type: 'gameStatus',
             status: {
                 ...status,
-                hasSlots: true // We know there are slots if we're broadcasting state
+                hasSlots: allSlots.length > 0,
+                slots: allSlots // Include slots for consistency
             }
         };
 

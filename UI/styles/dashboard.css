@@ -495,6 +495,19 @@ body {
     .game-running-message p {
         font-size: 1.1em;
     }
+    
+    .no-players-message {
+        margin: 20px 10px;
+        padding: 30px 15px;
+    }
+    
+    .no-players-message h2 {
+        font-size: 2em;
+    }
+    
+    .no-players-message p {
+        font-size: 1.1em;
+    }
 }
 
 .location-display {
@@ -1177,8 +1190,10 @@ html {
     position: relative;
     font-weight: 500;
     font-size: 1.1em;
-    min-width: 230px;
+    min-width: 180px;
+    max-width: 280px;
     text-align: center;
+    overflow: hidden;
 }
 
 .slot-tab .status-dot {
@@ -1234,6 +1249,11 @@ html {
     font-size: 1em;
     font-weight: 500;
     margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    display: block;
 }
 
         .game-status.no-slots {
@@ -1335,78 +1355,75 @@ html {
     50% { transform: translateY(-10px); }
 }
 
-/* Enhanced slot tabs scrolling experience */
-.slot-tabs-container {
+/* No Players Message Styles */
+.no-players-message {
+    background: linear-gradient(135deg, rgba(158, 158, 158, 0.9), rgba(117, 117, 117, 0.9));
+    border: 3px solid #9E9E9E;
+    border-radius: 20px;
+    padding: 30px 20px;
+    margin: 20px 0;
+    text-align: center;
+    width: 95%;
+    max-width: 100%;
+    box-shadow: 0 8px 25px rgba(158, 158, 158, 0.4);
+    animation: pulse-no-players 3s infinite;
     position: relative;
-    margin: 0 0 20px 0;
+    z-index: 1;
 }
 
-/* Fade effects for better visual indication of scrollable content */
-.slot-tabs-container::before,
-.slot-tabs-container::after {
-    content: '';
-    position: absolute;
-    top: 10px;
-    bottom: 15px;
-    width: 20px;
-    z-index: 2;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+.no-players-content {
+    color: white;
 }
 
-.slot-tabs-container::before {
-    left: 0;
-    background: linear-gradient(to right, rgba(0, 0, 0, 0.4), transparent);
+.no-players-icon {
+    font-size: 4em;
+    margin-bottom: 20px;
+    animation: gentle-sway 2s infinite ease-in-out;
 }
 
-.slot-tabs-container::after {
-    right: 0;
-    background: linear-gradient(to left, rgba(0, 0, 0, 0.4), transparent);
+.no-players-message h2 {
+    font-family: 'Permanent Marker', cursive;
+    font-size: 2.5em;
+    color: #fff;
+    margin: 0 0 15px 0;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
 }
 
-.slot-tabs-container:hover::before,
-.slot-tabs-container:hover::after {
-    opacity: 1;
+.no-players-message p {
+    font-size: 1.3em;
+    margin: 0 0 25px 0;
+    opacity: 0.95;
 }
 
-/* Modern Custom Scrollbar for Slot Tabs */
-.slot-tabs {
-    /* Webkit browsers (Chrome, Safari, Edge) */
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 215, 0, 0.7) rgba(0, 0, 0, 0.1);
+.try-next-prompt {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 15px;
+    padding: 20px;
+    margin-top: 20px;
 }
 
-.slot-tabs::-webkit-scrollbar {
-    height: 8px;
-    border-radius: 10px;
+.try-text {
+    font-size: 1.4em;
+    font-weight: bold;
+    display: block;
+    margin-bottom: 10px;
+    color: #FFD700;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
 }
 
-.slot-tabs::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 10px;
-    margin: 0 10px;
+.try-next-prompt .scan-qr {
+    font-size: 1.1em;
+    color: #fff;
+    opacity: 0.9;
 }
 
-.slot-tabs::-webkit-scrollbar-thumb {
-    background: linear-gradient(90deg, #FFD700, #FFA500);
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: all 0.3s ease;
+@keyframes pulse-no-players {
+    0% { box-shadow: 0 8px 25px rgba(158, 158, 158, 0.4); }
+    50% { box-shadow: 0 8px 35px rgba(158, 158, 158, 0.6); }
+    100% { box-shadow: 0 8px 25px rgba(158, 158, 158, 0.4); }
 }
 
-.slot-tabs::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(90deg, #FFED4E, #FFB84D);
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-    transform: scaleY(1.2);
-}
-
-.slot-tabs::-webkit-scrollbar-thumb:active {
-    background: linear-gradient(90deg, #E6C200, #E69500);
-    box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
-}
-
-/* Scrollbar corner styling */
-.slot-tabs::-webkit-scrollbar-corner {
-    background: transparent;
+@keyframes gentle-sway {
+    0%, 100% { transform: rotate(-2deg); }
+    50% { transform: rotate(2deg); }
 }
