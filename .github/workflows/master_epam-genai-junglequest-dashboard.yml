@@ -69,11 +69,8 @@ jobs:
         with:
           app-name: 'epam-genai-junglequest-dashboard'
           slot-name: 'Production'
-          app-settings-json: |
-            {
-              "SCM_DO_BUILD_DURING_DEPLOYMENT": "true"
-            }
-
+          app-settings-json: "{\"SCM_DO_BUILD_DURING_DEPLOYMENT\": \"true\"}"
+          
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
