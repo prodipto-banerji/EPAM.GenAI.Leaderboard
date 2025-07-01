@@ -69,7 +69,7 @@ jobs:
         with:
           app-name: 'epam-genai-junglequest-dashboard'
           slot-name: 'Production'
-          settings-json: |
+          app-settings-json: |
             {
               "SCM_DO_BUILD_DURING_DEPLOYMENT": "true"
             }
