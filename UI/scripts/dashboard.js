@@ -18,17 +18,33 @@ let isLoading = false; // Flag to prevent multiple simultaneous loads
 // Slot management
 let currentSlotId = null;
 let slots = [];
+let userSelectedSlot = false; // Flag to track if user manually selected a slot
 
 // Debounce flag to prevent multiple rapid WebSocket requests
 let lastRequestTime = 0;
 const REQUEST_DEBOUNCE_MS = 1000; // 1 second debounce
 
+// Debounce game state changes to prevent infinite loops
+let lastGameStateChangeTime = 0;
+const GAME_STATE_CHANGE_DEBOUNCE_MS = 2000; // 2 second debounce for game state changes
+
 // Cache last processed data to prevent duplicate processing
 let lastProcessedDataHash = null;
+
+// Rate limiting for getGameStatus requests
+let lastGameStatusRequestTime = 0;
+const GAME_STATUS_REQUEST_DEBOUNCE_MS = 1000; // 1 second between game status requests
+
+// Debug counters
+let gameStatusRequestCount = 0;
+let gameStatusResponseCount = 0;
 
 function selectLocation(location) {
     // Clear current data first
     clearDashboard();
+    
+    // Reset user selection flag when changing location
+    userSelectedSlot = false;
     
     // Update location in localStorage
     localStorage.setItem('selectedLocation', location);
@@ -67,10 +83,11 @@ function clearDashboard() {
         tbody.innerHTML = '';
     }
     
-    // Reset all player arrays
+    // Reset all player arrays and slot selection
     allPlayers = [];
     displayedPlayers = 0;
     previousTop3 = [];
+    userSelectedSlot = false; // Reset user selection when clearing dashboard
     
     // Hide leaderboard components when clearing
     hideLeaderboardComponents();
@@ -112,7 +129,7 @@ function connectWebSocket(location) {
             console.log('WebSocket connection established');
             // Send location and request initial game status
             ws.send(JSON.stringify({ type: 'setLocation', location }));
-            ws.send(JSON.stringify({ type: 'getGameStatus' }));
+            requestGameStatus(); // Use rate-limited function
             resolve(ws);
         };
 
@@ -136,7 +153,8 @@ function connectWebSocket(location) {
                     break;
 
                 case 'gameStatus':
-                    console.log('Received game status update:', data.status);
+                    gameStatusResponseCount++;
+                    console.log(`Received game status update #${gameStatusResponseCount}:`, data.status);
                     const previousActiveSlotId = currentSlotId;
                     const wasGameActive = previousGameActive;
                     
@@ -150,10 +168,13 @@ function connectWebSocket(location) {
                         const gameStateChanged = (previousActiveSlotId && previousActiveSlotId !== data.status.activeSlotId) ||
                                                (wasGameActive !== data.status.active);
                         
-                        if (gameStateChanged) {
-                            console.log('Game state changed - refreshing slot tabs');
-                            // Request fresh game status to ensure we have the latest slot data
-                            ws.send(JSON.stringify({ type: 'getGameStatus' }));
+                        // Add debouncing to prevent rapid state change processing
+                        const now = Date.now();
+                        const shouldProcessStateChange = gameStateChanged && (now - lastGameStateChangeTime > GAME_STATE_CHANGE_DEBOUNCE_MS);
+                        
+                        if (shouldProcessStateChange) {
+                            console.log('Game state changed - refreshing slot tabs (debounced)');
+                            lastGameStateChangeTime = now;
                             
                             // Multiple refresh attempts to ensure color changes are applied
                             setTimeout(() => {
@@ -171,6 +192,8 @@ function connectWebSocket(location) {
                                 updateSlotTabs(data.status.slots, data.status.activeSlotId);
                                 forceSlotTabColorUpdate();
                             }, 500);
+                        } else if (gameStateChanged) {
+                            console.log('Game state changed but skipping due to debounce');
                         }
                         
                         // Check if we need to show "Game is Running!" message for active slot with no players
@@ -528,6 +551,24 @@ function showLoadMoreButton(show) {
     document.head.appendChild(style);
 })();
 
+
+// Helper function to request game status with rate limiting
+function requestGameStatus() {
+    const now = Date.now();
+    if (now - lastGameStatusRequestTime > GAME_STATUS_REQUEST_DEBOUNCE_MS) {
+        lastGameStatusRequestTime = now;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            console.log('Requesting game status (rate limited)');
+            gameStatusRequestCount++; // Increment request counter
+            ws.send(JSON.stringify({ type: 'getGameStatus' }));
+            return true;
+        }
+    } else {
+        console.log('Game status request skipped due to rate limiting');
+    }
+    return false;
+}
+
 // Load more players (7 at a time)
 function loadMorePlayers(isLoadMoreClick = false) {
     const tbody = document.querySelector('.leaderboard-table tbody');
@@ -694,22 +735,47 @@ function updatePodium(topPlayers, location) {
         }
     });
 }    // Update slot tabs
-    function updateSlotTabs(slotsData, activeSlotId) {
-        console.log('Updating slot tabs with data:', slotsData, 'activeSlotId:', activeSlotId);
+    function updateSlotTabs(slotsData, activeSlotId, userSelectedSlotId = null) {
+        console.log('Updating slot tabs with data:', slotsData, 'activeSlotId:', activeSlotId, 'userSelectedSlotId:', userSelectedSlotId, 'userSelectedSlot flag:', userSelectedSlot);
         const slotTabs = document.getElementById('slotTabs');
         slots = slotsData;
-        // If no active slot, pick the latest slot (first in sorted list)
-        let latestSlotId = null;
-        if (!activeSlotId && slots.length > 0) {
-            // Assume slots are sorted by start_time DESC from backend
-            latestSlotId = slots[0].id;
+        
+        // Priority order for slot selection:
+        // 1. User manually selected slot (userSelectedSlotId)
+        // 2. Currently selected slot (currentSlotId) if user previously selected it and it still exists
+        // 3. Active slot (activeSlotId) - only if user hasn't manually selected a different slot
+        // 4. Latest slot (first in sorted list) - only as initial fallback
+        
+        let targetSlotId = null;
+        
+        if (userSelectedSlotId) {
+            // User manually selected a slot - this takes highest priority
+            targetSlotId = userSelectedSlotId;
+            userSelectedSlot = true;
+            console.log('Using user selected slot:', targetSlotId);
+        } else if (userSelectedSlot && currentSlotId && slots.find(slot => slot.id === currentSlotId)) {
+            // Keep current slot if user previously selected it and it still exists
+            targetSlotId = currentSlotId;
+            console.log('Keeping user-selected slot:', targetSlotId);
+        } else if (!userSelectedSlot && activeSlotId) {
+            // Use active slot only if user hasn't manually selected a different slot
+            targetSlotId = activeSlotId;
+            console.log('Using active slot (no user selection):', targetSlotId);
+        } else if (!userSelectedSlot && !currentSlotId && slots.length > 0) {
+            // Fall back to latest slot only as initial load when nothing is selected
+            targetSlotId = slots[0].id;
+            console.log('Using latest slot as initial fallback:', targetSlotId);
+        } else if (currentSlotId && slots.find(slot => slot.id === currentSlotId)) {
+            // Keep existing currentSlotId if it's valid
+            targetSlotId = currentSlotId;
+            console.log('Keeping existing current slot:', targetSlotId);
         }
-        // Set currentSlotId to active or latest
-        if (activeSlotId) {
-            currentSlotId = activeSlotId;
-        } else if (latestSlotId) {
-            currentSlotId = latestSlotId;
+        
+        // Update currentSlotId
+        if (targetSlotId) {
+            currentSlotId = targetSlotId;
         }
+        
         slotTabs.innerHTML = '';
         slots.forEach(slot => {
             let tabClass = 'slot-tab';
@@ -739,15 +805,20 @@ function updatePodium(topPlayers, location) {
                 </div>
             `;
             tab.onclick = () => {
+                console.log('User clicked on slot:', slot.id);
+                userSelectedSlot = true; // Mark that user manually selected a slot
                 currentSlotId = slot.id;
                 loadSlotData(slot.id);
-                updateSlotTabs(slots, currentSlotId);
+                // Pass the user selected slot ID to prevent override
+                updateSlotTabs(slots, null, slot.id);
             };
             slotTabs.appendChild(tab);
         });
-        // If no active slot, load latest slot data and highlight its tab
-        if (!activeSlotId && latestSlotId) {
-            loadSlotData(latestSlotId);
+        
+        // Only auto-load data if we're switching to a different slot
+        if (targetSlotId && targetSlotId !== currentSlotId) {
+            console.log('Auto-loading data for slot:', targetSlotId);
+            loadSlotData(targetSlotId);
         }
     }
 
@@ -768,9 +839,16 @@ async function loadSlotData(slotId) {
                 showGameRunningMessage();
             }
         } else {
-            // For inactive slots, clear any game running message and show components
+            // For inactive slots, clear any game running message
+            // Note: Don't automatically show all leaderboard components here
+            // Let updateDashboard decide based on player count
             hideGameRunningMessage();
-            showLeaderboardComponents();
+            
+            // Show podium section but let updateDashboard decide about table
+            const podiumSection = document.querySelector('.podium-section');
+            if (podiumSection) {
+                podiumSection.style.display = 'block';
+            }
             
             // Update UI to show loading state for inactive slots
             const tbody = document.querySelector('.leaderboard-table tbody');
@@ -904,6 +982,46 @@ function hideGameRunningMessage() {
     }
 }
 
+// Show message when table is hidden due to low player count
+function showTableHiddenMessage() {
+    const leaderboardTable = document.querySelector('.leaderboard-table');
+    if (leaderboardTable) {
+        // Check if message already exists
+        let messageDiv = document.querySelector('.table-hidden-message');
+        if (!messageDiv) {
+            messageDiv = document.createElement('div');
+            messageDiv.className = 'table-hidden-message';
+            messageDiv.style.cssText = `
+                text-align: center;
+                padding: 20px;
+                margin: 20px auto;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+                color: #fff;
+                font-size: 16px;
+                max-width: 400px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            `;
+            messageDiv.innerHTML = '📊 Leaderboard table will appear when more than 3 players join the game';
+            
+            // Insert after the podium section
+            const podiumSection = document.querySelector('.podium-section');
+            if (podiumSection && podiumSection.parentNode) {
+                // podiumSection.parentNode.insertBefore(messageDiv, leaderboardTable);
+            }
+        }
+        messageDiv.style.display = 'block';
+    }
+}
+
+// Hide the table hidden message
+function hideTableHiddenMessage() {
+    const messageDiv = document.querySelector('.table-hidden-message');
+    if (messageDiv) {
+        messageDiv.style.display = 'none';
+    }
+}
+
 // Helper: check if a player is in the top 10
 function isPlayerInTop10(player, players) {
     if (!player || !Array.isArray(players)) return false;
@@ -942,7 +1060,29 @@ async function updateDashboard(players, location, updatedPlayer = null) {
     // Hide the game running message if it exists
     hideGameRunningMessage();
     
-    // Show leaderboard components since we have player data
+    // Check if we have 3 or fewer players - only show podium, hide table
+    if (players.length <= 3) {
+        console.log(`Only ${players.length} players, showing podium only (hiding table)`);
+        showPodiumOnly();
+        
+        // Show all players in podium (up to 3)
+        updatePodium(players, location);
+        
+        // Clear table and hide load more
+        const tbody = document.querySelector('.leaderboard-table tbody');
+        if (tbody) {
+            tbody.innerHTML = '';
+        }
+        allPlayers = [];
+        displayedPlayers = 0;
+        showLoadMoreButton(false);
+        
+        // Check for position changes
+        checkForPositionChanges(players);
+        return;
+    }
+    
+    // Show leaderboard components since we have more than 3 players
     showLeaderboardComponents();
     
     // Only show top 10 initially
@@ -1150,6 +1290,9 @@ function hideLeaderboardComponents() {
     if (loadMoreBtn) {
         loadMoreBtn.style.display = 'none';
     }
+    
+    // Also hide the table hidden message
+    hideTableHiddenMessage();
 }
 
 function showLeaderboardComponents() {
@@ -1162,26 +1305,104 @@ function showLeaderboardComponents() {
     if (leaderboardTable) {
         leaderboardTable.style.display = 'table';
     }
+    
+    // Hide the table hidden message when showing full leaderboard
+    hideTableHiddenMessage();
+}
+
+// Show only podium section (hide table)
+function showPodiumOnly() {
+    const podiumSection = document.querySelector('.podium-section');
+    const leaderboardTable = document.querySelector('.leaderboard-table');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    
+    if (podiumSection) {
+        podiumSection.style.display = 'block';
+    }
+    if (leaderboardTable) {
+        leaderboardTable.style.display = 'none';
+    }
+    if (loadMoreBtn) {
+        loadMoreBtn.style.display = 'none';
+    }
+    
+    // Show message explaining why table is hidden
+    showTableHiddenMessage();
+}
+
+// Show/hide just the leaderboard table
+function showLeaderboardTable(show = true) {
+    const leaderboardTable = document.querySelector('.leaderboard-table');
+    if (leaderboardTable) {
+        leaderboardTable.style.display = show ? 'table' : 'none';
+    }
 }
 
 // Helper function to force slot tab color updates
 function forceSlotTabColorUpdate() {
     console.log('Forcing slot tab color update');
     const slotTabElements = document.querySelectorAll('.slot-tab');
-    slotTabElements.forEach((tab, index) => {
-        const slot = slots[index];
-        if (slot) {
-            // Remove all status classes
-            tab.classList.remove('active-slot', 'inactive-slot');
+    slotTabElements.forEach((tab) => {
+        // Find the corresponding slot data by checking the tab's position
+        const slotNameElement = tab.querySelector('.slot-name-time');
+        if (slotNameElement) {
+            const tabText = slotNameElement.textContent;
+            // Find matching slot by name
+            const matchingSlot = slots.find(slot => tabText.includes(slot.name));
             
-            // Re-add the correct status class based on current slot data
-            if (slot.status === 'active') {
-                tab.classList.add('active-slot');
-                console.log(`Set slot ${slot.id} to active (green)`);
-            } else if (slot.status === 'completed') {
-                tab.classList.add('inactive-slot');
-                console.log(`Set slot ${slot.id} to completed (red)`);
+            if (matchingSlot) {
+                // Remove all status classes
+                tab.classList.remove('active-slot', 'inactive-slot');
+                
+                // Re-add the correct status class based on current slot data
+                if (matchingSlot.status === 'active') {
+                    tab.classList.add('active-slot');
+                    console.log(`Set slot ${matchingSlot.id} to active (green)`);
+                } else if (matchingSlot.status === 'completed') {
+                    tab.classList.add('inactive-slot');
+                    console.log(`Set slot ${matchingSlot.id} to completed (red)`);
+                }
             }
         }
     });
 }
+
+// Test function to verify slot selection behavior - can be called from browser console
+function testSlotSelection() {
+    console.log('=== Slot Selection Test ===');
+    console.log('Current slots:', slots.map(s => ({ id: s.id, name: s.name, status: s.status })));
+    console.log('Current slot ID:', currentSlotId);
+    console.log('User selected slot flag:', userSelectedSlot);
+    console.log('Total slot tabs:', document.querySelectorAll('.slot-tab').length);
+    console.log('Game status requests:', gameStatusRequestCount);
+    console.log('Game status responses:', gameStatusResponseCount);
+    console.log('Total players:', allPlayersFull?.length || 0);
+    console.log('Players in current view:', allPlayers?.length || 0);
+    
+    const activeTab = document.querySelector('.slot-tab.active');
+    if (activeTab) {
+        const tabText = activeTab.querySelector('.slot-name-time')?.textContent;
+        console.log('Active tab text:', tabText);
+    }
+    
+    const tableVisible = document.querySelector('.leaderboard-table')?.style.display !== 'none';
+    const podiumVisible = document.querySelector('.podium-section')?.style.display !== 'none';
+    console.log('Table visible:', tableVisible);
+    console.log('Podium visible:', podiumVisible);
+    
+    return {
+        slots: slots,
+        currentSlotId: currentSlotId,
+        userSelectedSlot: userSelectedSlot,
+        activeTabText: activeTab?.querySelector('.slot-name-time')?.textContent,
+        gameStatusRequestCount: gameStatusRequestCount,
+        gameStatusResponseCount: gameStatusResponseCount,
+        totalPlayers: allPlayersFull?.length || 0,
+        currentViewPlayers: allPlayers?.length || 0,
+        tableVisible: tableVisible,
+        podiumVisible: podiumVisible
+    };
+}
+
+// Expose function to global scope for testing
+window.testSlotSelection = testSlotSelection;

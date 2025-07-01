@@ -56,7 +56,7 @@ class WebSocketService {
                             }
                             break;
                         case 'getGameStatus':
-                            console.log('Client requested game status update');
+                            console.log('Client requested game status update at', new Date().toISOString());
                             const allSlots = await this.databaseService.getAllSlots();
                             const currentActiveSlot = await this.databaseService.getActiveSlot();
                             this.sendToClient(ws, JSON.stringify({
