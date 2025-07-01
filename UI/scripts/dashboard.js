@@ -85,12 +85,24 @@ function clearDashboard() {
     
     // Reset all player arrays and slot selection
     allPlayers = [];
+    allPlayersFull = [];
     displayedPlayers = 0;
     previousTop3 = [];
+    previousTop10 = [];
     userSelectedSlot = false; // Reset user selection when clearing dashboard
+    
+    // Reset slot-related state
+    currentSlotId = null;
+    slots = [];
+    
+    // Reset data processing state
+    lastProcessedDataHash = null;
     
     // Hide leaderboard components when clearing
     hideLeaderboardComponents();
+    
+    // Hide any game running message
+    hideGameRunningMessage();
     
     // Update table display
     updateTableDisplay();
@@ -139,11 +151,17 @@ function connectWebSocket(location) {
             switch (data.type) {
                 case 'rankings':
                     if (data.location === currentLocation) {
+                        // Check if the rankings data is for the current slot
+                        if (data.slotId && currentSlotId && data.slotId !== currentSlotId) {
+                            console.log(`Ignoring rankings data for slot ${data.slotId}, current slot is ${currentSlotId}`);
+                            break;
+                        }
+                        
                         // Generate a simple hash to check if data has changed
                         const dataHash = JSON.stringify(data.players.slice(0, 10));
                         if (dataHash !== lastProcessedDataHash) {
                             lastProcessedDataHash = dataHash;
-                            console.log('Updating dashboard with new rankings:', data.players);
+                            console.log('Updating dashboard with new rankings for slot:', data.slotId || 'default', 'players:', data.players);
                             // If data.updatedPlayer exists, pass it; else, pass null
                             updateDashboard(data.players, data.location, data.updatedPlayer || null);
                         } else {
@@ -191,6 +209,14 @@ function connectWebSocket(location) {
                                 console.log('Final refresh of slot tabs');
                                 updateSlotTabs(data.status.slots, data.status.activeSlotId);
                                 forceSlotTabColorUpdate();
+                                
+                                // After slot tabs are updated, check if we need to show "no players" message
+                                // for a slot that just became inactive with no players
+                                // BUT ONLY if there are actually slots (hasSlots is true)
+                                if (!data.status.active && data.status.hasSlots && (allPlayers.length === 0 && allPlayersFull.length === 0)) {
+                                    console.log('Game just ended with no players, showing no players message');
+                                    showGameRunningMessage(false); // Show "no players" message
+                                }
                             }, 500);
                         } else if (gameStateChanged) {
                             console.log('Game state changed but skipping due to debounce');
@@ -771,7 +797,8 @@ function updatePodium(topPlayers, location) {
             console.log('Keeping existing current slot:', targetSlotId);
         }
         
-        // Update currentSlotId
+        // Update currentSlotId and track if it changed
+        const previousSlotId = currentSlotId;
         if (targetSlotId) {
             currentSlotId = targetSlotId;
         }
@@ -800,24 +827,37 @@ function updatePodium(topPlayers, location) {
             });
             
             tab.innerHTML = `
-                <div class="slot-name-time">
+                <div class="slot-name-time" title="${slot.name} - ${startTimeString}">
                     ${statusDot} ${slot.name} - ${startTimeString}
                 </div>
             `;
             tab.onclick = () => {
                 console.log('User clicked on slot:', slot.id);
+                
+                // Check if user clicked on the same slot that's already selected
+                if (currentSlotId === slot.id) {
+                    console.log('User clicked on already selected slot, ignoring duplicate click');
+                    return; // Do nothing if same slot is clicked
+                }
+                
+                console.log('Slot changed from', currentSlotId, 'to', slot.id);
                 userSelectedSlot = true; // Mark that user manually selected a slot
+                const previousSlotId = currentSlotId; // Store previous slot ID
                 currentSlotId = slot.id;
-                loadSlotData(slot.id);
-                // Pass the user selected slot ID to prevent override
-                updateSlotTabs(slots, null, slot.id);
+                
+                // Only load data and update dashboard if switching to a different slot
+                if (previousSlotId !== slot.id) {
+                    loadSlotData(slot.id);
+                    // Pass the user selected slot ID to prevent override
+                    updateSlotTabs(slots, null, slot.id);
+                }
             };
             slotTabs.appendChild(tab);
         });
         
-        // Only auto-load data if we're switching to a different slot
-        if (targetSlotId && targetSlotId !== currentSlotId) {
-            console.log('Auto-loading data for slot:', targetSlotId);
+        // Auto-load data if slot changed or if this is initial load (previousSlotId was null)
+        if (targetSlotId && (targetSlotId !== previousSlotId || previousSlotId === null)) {
+            console.log('Auto-loading data for slot:', targetSlotId, '(previous:', previousSlotId, ')');
             loadSlotData(targetSlotId);
         }
     }
@@ -826,6 +866,35 @@ function updatePodium(topPlayers, location) {
 async function loadSlotData(slotId) {
     try {
         console.log('Loading data for slot:', slotId);
+        
+        // Validate slotId
+        if (!slotId) {
+            console.warn('No slot ID provided, skipping data load');
+            return;
+        }
+        
+        // Check if there are any slots at all
+        if (!slots || slots.length === 0) {
+            console.log('No slots available, showing waiting message');
+            showGameRunningMessage(false, true); // isActiveGame=false, isNoSlotsState=true
+            return;
+        }
+        
+        // Clear any existing data to prevent showing data from other slots
+        allPlayers = [];
+        allPlayersFull = [];
+        displayedPlayers = 0;
+        
+        // Clear UI components
+        const podiumContainer = document.getElementById('podiumContainer');
+        const tbody = document.querySelector('.leaderboard-table tbody');
+        if (podiumContainer) {
+            podiumContainer.innerHTML = '';
+        }
+        if (tbody) {
+            tbody.innerHTML = '';
+        }
+        
         currentSlotId = slotId;
 
         // Check if this is an active slot by looking at our slots data
@@ -834,27 +903,12 @@ async function loadSlotData(slotId) {
         if (activeSlot) {
             // If we're loading an active slot and have no player data, show game running message
             // This prevents showing empty podium while data loads
-            if (allPlayers.length === 0 && allPlayersFull.length === 0) {
-                console.log('Loading active slot with no players, showing game running message');
-                showGameRunningMessage();
-            }
+            console.log('Loading active slot, showing game running message');
+            showGameRunningMessage(true); // Active game
         } else {
-            // For inactive slots, clear any game running message
-            // Note: Don't automatically show all leaderboard components here
-            // Let updateDashboard decide based on player count
-            hideGameRunningMessage();
-            
-            // Show podium section but let updateDashboard decide about table
-            const podiumSection = document.querySelector('.podium-section');
-            if (podiumSection) {
-                podiumSection.style.display = 'block';
-            }
-            
-            // Update UI to show loading state for inactive slots
-            const tbody = document.querySelector('.leaderboard-table tbody');
-            if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="4" class="loading-message">Loading data...</td></tr>';
-            }
+            // For inactive slots, show appropriate message immediately
+            console.log('Loading inactive slot, showing no players message');
+            showGameRunningMessage(false); // Inactive slot
         }
 
         // Request fresh rankings through WebSocket
@@ -892,31 +946,16 @@ async function loadInitialData(location) {
         // Show loading state
         document.getElementById('currentLocation').textContent = 'Loading...';
         
+        // Clear any existing data to prevent showing stale data
+        clearDashboard();
+        
         // Connect to WebSocket first
         await connectWebSocket(location);
         
-        // Fetch initial rankings
-        console.log('Fetching initial rankings');
-        const response = await fetch(`${window.location.origin}/api/rankings/${location}`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        
-        if (data.status === 'success' && location === currentLocation) {
-            console.log('Initial rankings received:', data.rankings);
-            if (Array.isArray(data.rankings) && data.rankings.length > 0) {
-                updateDashboard(data.rankings, location);
-            } else {
-                // No rankings data - let the game status logic handle the display
-                console.log('No rankings data available');
-                hideLeaderboardComponents();
-            }
-        } else {
-            console.log('Initial rankings not successful or location changed');
-            // Let the game status logic handle the display
-            hideLeaderboardComponents();
-        }
+        // Don't fetch initial rankings immediately - wait for game status to determine the correct slot
+        // The WebSocket will send game status which will trigger the appropriate slot selection
+        // and then fetch the correct rankings data
+        console.log('WebSocket connected, waiting for game status to determine correct slot...');
 
         // Update location display
         document.getElementById('currentLocation').textContent = location;
@@ -928,8 +967,8 @@ async function loadInitialData(location) {
     }
 }
 
-// Show game running message when no players have played yet
-function showGameRunningMessage() {
+// Show appropriate message when no players have played yet
+function showGameRunningMessage(isActiveGame = true, isNoSlotsState = false) {
     // First hide any existing game status messages and the game running message
     hideGameRunningMessage();
     const gameStatusDiv = document.getElementById('gameStatus');
@@ -951,21 +990,53 @@ function showGameRunningMessage() {
         tbody.innerHTML = '';
     }
     
-    // Create and show the game running message
+    // Create different messages based on game status
     const gameRunningDiv = document.createElement('div');
     gameRunningDiv.id = 'gameRunningMessage';
-    gameRunningDiv.className = 'game-running-message';
-    gameRunningDiv.innerHTML = `
-        <div class="game-running-content">
-            <div class="game-running-icon">🎮</div>
-            <h2>Game is Running!</h2>
-            <p>Waiting for players to join the adventure...</p>
-            <div class="play-prompt">
-                <span class="play-text">Ready to play?</span>
-                <div class="scan-qr">👉 Scan the QR code on the right!</div>
+    
+    if (isNoSlotsState) {
+        // No slots exist - show waiting for game to start message
+        gameRunningDiv.className = 'no-players-message'; // Use same styling as "Session Completed"
+        gameRunningDiv.innerHTML = `
+            <div class="no-players-content">
+                <div class="no-players-icon">⏳</div>
+                <h2>Waiting for game session to start...</h2>
+                <p>No game sessions are currently available</p>
+                <div class="try-next-prompt">
+                    <span class="try-text">Stay tuned!</span>
+                    <div class="scan-qr">👉 Game sessions will appear here when available!</div>
+                </div>
             </div>
-        </div>
-    `;
+        `;
+    } else if (isActiveGame) {
+        // Active game - show game running message
+        gameRunningDiv.className = 'game-running-message';
+        gameRunningDiv.innerHTML = `
+            <div class="game-running-content">
+                <div class="game-running-icon">🎮</div>
+                <h2>Game is Running!</h2>
+                <p>Waiting for players to join the adventure...</p>
+                <div class="play-prompt">
+                    <span class="play-text">Ready to play?</span>
+                    <div class="scan-qr">👉 Scan the QR code on the right!</div>
+                </div>
+            </div>
+        `;
+    } else {
+        // Inactive/closed game - show no players message
+        gameRunningDiv.className = 'no-players-message';
+        gameRunningDiv.innerHTML = `
+            <div class="no-players-content">
+                <div class="no-players-icon">😴</div>
+                <h2>Session Completed</h2>
+                <p>No one played in this session</p>
+                <div class="try-next-prompt">
+                    <span class="try-text">Maybe next time!</span>
+                    <div class="scan-qr">👉 Scan the QR code to join future games!</div>
+                </div>
+            </div>
+        `;
+    }
     
     // Insert in the main content area
     const mainContent = document.querySelector('.main-content');
@@ -1053,7 +1124,13 @@ async function updateDashboard(players, location, updatedPlayer = null) {
     
     // Check if no players have played yet
     if (players.length === 0) {
-        showGameRunningMessage();
+        // Check if current slot is active or not
+        const currentSlot = slots.find(slot => slot.id === currentSlotId);
+        const isActiveSlot = currentSlot && currentSlot.status === 'active';
+        console.log('No players found. Current slot:', currentSlot, 'Is active:', isActiveSlot);
+        
+        // Always show appropriate message based on slot status
+        showGameRunningMessage(isActiveSlot);
         return;
     }
     
@@ -1156,6 +1233,7 @@ function updateGameStatus(status) {
     }
     
     if (!status.hasSlots) {
+        console.log('No slots detected - showing waiting message');
         // No slots exist yet - show waiting message
         gameStatusDiv.className = 'game-status no-slots';
         gameStatusDiv.style.display = 'block';
@@ -1171,6 +1249,7 @@ function updateGameStatus(status) {
             clearDashboard();
         }
     } else if (status.active) {
+        console.log('Game is active - handling active state');
         // Active game session - hide the game status message completely
         gameStatusDiv.style.display = 'none';
         lastGameInfo.style.display = 'none';
@@ -1181,7 +1260,7 @@ function updateGameStatus(status) {
         // This prevents showing empty podium boxes and table while waiting for data
         if (allPlayers.length === 0 && allPlayersFull.length === 0) {
             console.log('Active game detected with no players, showing game running message');
-            showGameRunningMessage();
+            showGameRunningMessage(true); // Active game
         } else {
             // We have player data, show leaderboard components
             showLeaderboardComponents();
@@ -1197,20 +1276,25 @@ function updateGameStatus(status) {
         lastGameInfo.style.display = 'none';
         lastGameInfo.innerHTML = '';
         
-        // Keep leaderboard components visible when game ends if we have player data
-        // This ensures users can see the final results without needing to refresh
+        // For inactive games, check if we have player data to determine what to show
         if (allPlayers.length > 0 || allPlayersFull.length > 0) {
             console.log('Game ended but keeping leaderboard visible with final results');
             showLeaderboardComponents();
             // Add class for more compact styling when leaderboard is shown
             gameStatusDiv.className = 'game-status inactive with-leaderboard';
+            // Hide any no-players message since we have data
+            hideGameRunningMessage();
         } else {
-            // Only hide leaderboard if there's truly no data
+            // No player data - show appropriate message for inactive slot
+            console.log('Game ended with no players, showing no players message');
             hideLeaderboardComponents();
+            
+            // Immediately show "no players" message for completed slots
+            if (gameJustEnded || (currentSlotId && slots.find(slot => slot.id === currentSlotId && slot.status === 'completed'))) {
+                console.log('Showing no players message for completed slot');
+                showGameRunningMessage(false); // Show "no players" message
+            }
         }
-        
-        // Hide any game running message when showing inactive status
-        hideGameRunningMessage();
         
         // Add winners information if available
         let infoHTML = '';
