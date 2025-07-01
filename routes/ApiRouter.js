@@ -112,8 +112,26 @@ class ApiRouter {
         // Get rankings for location
         this.router.get('/rankings/:location', async (req, res) => {
             try {
-                const players = await this.databaseService.getPlayersForLocation(req.params.location);
-                res.json(players);
+                const activeSlot = await this.databaseService.getActiveSlot();
+                let players = [];
+                
+                if (activeSlot) {
+                    // Active slot exists - get players from active slot
+                    players = await this.databaseService.getPlayersForLocation(req.params.location, activeSlot.id);
+                } else {
+                    // No active slot - get players from the last completed slot only
+                    const lastCompletedSlot = await this.databaseService.getLastCompletedSlot();
+                    if (lastCompletedSlot) {
+                        players = await this.databaseService.getPlayersForLocation(req.params.location, lastCompletedSlot.id);
+                    }
+                    // If no completed slot exists, players remains empty array
+                }
+                
+                res.json({
+                    status: 'success',
+                    rankings: players,
+                    slotId: activeSlot?.id || null
+                });
             } catch (error) {
                 console.error('Error in GET /rankings/:location:', error);
                 res.status(500).json({ status: 'error', message: error.message });

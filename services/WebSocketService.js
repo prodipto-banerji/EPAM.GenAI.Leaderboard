@@ -29,19 +29,51 @@ class WebSocketService {
                         case 'setLocation':
                             this.addClient(ws, data.location);
                             console.log(`Client set location to: ${data.location}`);
-                            // Send initial data to client
-                            await this.broadcastRankings(data.location);
+                            
+                            // Get slot information
                             const slots = await this.databaseService.getAllSlots();
                             const activeSlot = await this.databaseService.getActiveSlot();
-                            await this.broadcastGameState({
-                                active: !!activeSlot,
-                                slotName: activeSlot?.name,
-                                message: activeSlot ? 
-                                    `Game Session "${activeSlot.name}" is active!` : 
-                                    'Waiting for game session to start...',
-                                slots: slots,
-                                activeSlotId: activeSlot?.id
-                            });
+                            
+                            // Send initial data to client - this will show leaderboard if there's data
+                            await this.broadcastRankings(data.location);
+                            
+                            // Determine game status based on slots and data
+                            let gameStatus;
+                            if (slots.length === 0) {
+                                // No slots exist yet
+                                gameStatus = {
+                                    active: false,
+                                    slotName: null,
+                                    message: 'Waiting for game session to start...',
+                                    slots: slots,
+                                    activeSlotId: null,
+                                    hasSlots: false
+                                };
+                            } else if (activeSlot) {
+                                // Active slot exists
+                                gameStatus = {
+                                    active: true,
+                                    slotName: activeSlot.name,
+                                    message: `Game Session "${activeSlot.name}" is active!`,
+                                    slots: slots,
+                                    activeSlotId: activeSlot.id,
+                                    hasSlots: true
+                                };
+                            } else {
+                                // No active slot, but slots exist (game has ended)
+                                const lastSlot = await this.databaseService.getLastCompletedSlot();
+                                gameStatus = {
+                                    active: false, 
+                                    slotName: lastSlot?.name,
+                                    message: 'Game session has ended',
+                                    slots: slots,
+                                    activeSlotId: null,
+                                    hasSlots: true,
+                                    lastSlotInfo: lastSlot
+                                };
+                            }
+                            
+                            await this.broadcastGameState(gameStatus);
                             break;
                         case 'getRankings':
                             if (data.slotId) {
@@ -120,11 +152,27 @@ class WebSocketService {
     async broadcastRankings(location) {
         try {
             const activeSlot = await this.databaseService.getActiveSlot();
-            const players = await this.databaseService.getPlayersForLocation(location, activeSlot?.id);
+            let players = [];
+            let slotId = null;
+            
+            if (activeSlot) {
+                // Active slot exists - get players from active slot
+                players = await this.databaseService.getPlayersForLocation(location, activeSlot.id);
+                slotId = activeSlot.id;
+            } else {
+                // No active slot - get players from the last completed slot
+                const lastCompletedSlot = await this.databaseService.getLastCompletedSlot();
+                if (lastCompletedSlot) {
+                    players = await this.databaseService.getPlayersForLocation(location, lastCompletedSlot.id);
+                    slotId = lastCompletedSlot.id;
+                }
+            }
+            
             const message = {
                 type: 'rankings',
                 location: location,
-                players: players
+                players: players,
+                slotId: slotId
             };
             this.broadcastToLocation(JSON.stringify(message), location);
         } catch (error) {
@@ -140,7 +188,8 @@ class WebSocketService {
                 slotName: newSlot.name,
                 message: `Game Session "${newSlot.name}" has started!`,
                 slots: await this.databaseService.getAllSlots(),
-                activeSlotId: newSlot.id
+                activeSlotId: newSlot.id,
+                hasSlots: true
             });
             return newSlot;
         } catch (error) {
@@ -160,7 +209,8 @@ class WebSocketService {
                 message: 'Game session has ended',
                 slots: await this.databaseService.getAllSlots(),
                 activeSlotId: null,
-                lastSlotInfo: lastSlot
+                lastSlotInfo: lastSlot,
+                hasSlots: true
             });
             return stoppedSlot;
         } catch (error) {
@@ -173,8 +223,8 @@ class WebSocketService {
         const message = {
             type: 'gameStatus',
             status: {
-                ...status,
-                hasSlots: true // We know there are slots if we're broadcasting state
+                hasSlots: status.slots && status.slots.length > 0, // Check if slots actually exist
+                ...status
             }
         };
 

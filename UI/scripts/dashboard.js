@@ -147,12 +147,14 @@ function connectWebSocket(location) {
                         if (data.status.active && data.status.activeSlotId) {
                             currentSlotId = data.status.activeSlotId;
                             
-                            // Always show "Game is Running!" message for active games with no players
-                            // This ensures we don't show empty podium boxes while waiting for data
-                            if (allPlayers.length === 0 && allPlayersFull.length === 0) {
-                                console.log('Active game detected with no players, showing game running message');
-                                showGameRunningMessage();
-                            }
+                            // Wait a bit to give time for rankings data to arrive
+                            // Only show "Game is Running!" if we still have no players after a short delay
+                            setTimeout(() => {
+                                if (data.status.active && allPlayers.length === 0 && allPlayersFull.length === 0) {
+                                    console.log('Active game detected with no players after delay, showing game running message');
+                                    showGameRunningMessage();
+                                }
+                            }, 500); // 500ms delay to allow rankings to load
                             
                             // Request fresh rankings with debouncing
                             const now = Date.now();
@@ -903,9 +905,13 @@ async function updateDashboard(players, location, updatedPlayer = null) {
     
     // Check if no players have played yet
     if (players.length === 0) {
-        showGameRunningMessage();
+        console.log('No players data received, will handle via game status logic');
+        // Don't show "Game is Running" here - let the game status logic handle it
+        // This prevents showing the wrong message when game has ended but no players exist
         return;
     }
+    
+    console.log('Player data received, showing leaderboard:', players.length, 'players');
     
     // Hide the game running message if it exists
     hideGameRunningMessage();
