@@ -63,13 +63,6 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_8547E428C5834A7EAAC9258A9FA22C17 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_FFF754C818A449F3B6F6AEA9AB8E76B3 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_19A47EC53ADC4E52890FF7786588209E }}
-
-      - name: Set App Setting to Enable Build on Deploy
-        uses: azure/appservice-settings@v1
-        with:
-          app-name: 'epam-genai-junglequest-dashboard'
-          slot-name: 'Production'
-          app-settings-json: "{\"SCM_DO_BUILD_DURING_DEPLOYMENT\": \"true\"}"
           
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
