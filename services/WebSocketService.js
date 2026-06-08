@@ -31,8 +31,8 @@ class WebSocketService {
                             console.log(`Client set location to: ${data.location}`);
                             // Send initial data to client
                             await this.broadcastRankings(data.location);
-                            const slots = await this.databaseService.getAllSlots();
-                            const activeSlot = await this.databaseService.getActiveSlot();
+                            const slots = await this.databaseService.getSlotsForLocation(data.location);
+                            const activeSlot = await this.databaseService.getActiveSlot(data.location);
                             await this.broadcastGameState({
                                 active: !!activeSlot,
                                 slotName: activeSlot?.name,
@@ -57,8 +57,9 @@ class WebSocketService {
                             break;
                         case 'getGameStatus':
                             console.log('Client requested game status update at', new Date().toISOString());
-                            const allSlots = await this.databaseService.getAllSlots();
-                            const currentActiveSlot = await this.databaseService.getActiveSlot();
+                            const clientLocation = this.getClientLocation(ws);
+                            const allSlots = await this.databaseService.getSlotsForLocation(clientLocation);
+                            const currentActiveSlot = await this.databaseService.getActiveSlot(clientLocation);
                             this.sendToClient(ws, JSON.stringify({
                                 type: 'gameStatus',
                                 status: {
@@ -137,7 +138,7 @@ class WebSocketService {
 
     async broadcastRankings(location) {
         try {
-            const activeSlot = await this.databaseService.getActiveSlot();
+            const activeSlot = await this.databaseService.getActiveSlot(location);
             const players = await this.databaseService.getPlayersForLocation(location, activeSlot?.id);
             const message = {
                 type: 'rankings',
@@ -150,16 +151,19 @@ class WebSocketService {
         }
     }
 
-    async startSlot(slotName) {
+    async startSlot(slotName, location = null) {
         try {
-            const newSlot = await this.databaseService.startSlot(slotName);
+            const newSlot = await this.databaseService.startSlot(slotName, location);
+            const locationSlots = location 
+                ? await this.databaseService.getSlotsForLocation(location)
+                : await this.databaseService.getAllSlots();
             await this.broadcastGameState({
                 active: true,
                 slotName: newSlot.name,
                 message: `Game Session "${newSlot.name}" has started!`,
-                slots: await this.databaseService.getAllSlots(),
+                slots: locationSlots,
                 activeSlotId: newSlot.id
-            });
+            }, location);
             return newSlot;
         } catch (error) {
             console.error('Error starting slot:', error);
@@ -170,16 +174,20 @@ class WebSocketService {
     async stopSlot(slotId) {
         try {
             const stoppedSlot = await this.databaseService.stopSlot(slotId);
+            const location = stoppedSlot.location;
             const lastSlot = await this.databaseService.getLastCompletedSlot();
+            const locationSlots = location
+                ? await this.databaseService.getSlotsForLocation(location)
+                : await this.databaseService.getAllSlots();
             
             await this.broadcastGameState({
                 active: false,
                 slotName: stoppedSlot.name,
                 message: 'Game session has ended',
-                slots: await this.databaseService.getAllSlots(),
+                slots: locationSlots,
                 activeSlotId: null,
                 lastSlotInfo: lastSlot
-            });
+            }, location);
             return stoppedSlot;
         } catch (error) {
             console.error('Error stopping slot:', error);
@@ -187,20 +195,23 @@ class WebSocketService {
         }
     }
 
-    async broadcastGameState(status) {
-        // Get all slots to properly determine if there are any slots
-        const allSlots = await this.databaseService.getAllSlots();
+    async broadcastGameState(status, location = null) {
+        const slots = status.slots || await this.databaseService.getAllSlots();
         
         const message = {
             type: 'gameStatus',
             status: {
                 ...status,
-                hasSlots: allSlots.length > 0,
-                slots: allSlots // Include slots for consistency
+                hasSlots: slots.length > 0,
+                slots: slots
             }
         };
 
-        this.broadcast(JSON.stringify(message));
+        if (location) {
+            this.broadcastToLocation(JSON.stringify(message), location);
+        } else {
+            this.broadcast(JSON.stringify(message));
+        }
     }
 }
 
