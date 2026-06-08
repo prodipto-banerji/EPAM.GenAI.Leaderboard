@@ -30,9 +30,26 @@ class WebSocketService {
                             this.addClient(ws, data.location);
                             console.log(`Client set location to: ${data.location}`);
                             // Send initial data to client
-                            await this.broadcastRankings(data.location);
                             const slots = await this.databaseService.getSlotsForLocation(data.location);
                             const activeSlot = await this.databaseService.getActiveSlot(data.location);
+                            
+                            // If there's an active slot, broadcast its rankings
+                            // If not, broadcast rankings from the last completed slot
+                            if (activeSlot) {
+                                await this.broadcastRankings(data.location);
+                            } else if (slots.length > 0) {
+                                // Get players from the most recent slot (first in the list, ordered by start_time DESC)
+                                const lastSlot = slots[0];
+                                const players = await this.databaseService.getPlayersForSlot(lastSlot.id, data.location);
+                                this.sendToClient(ws, JSON.stringify({
+                                    type: 'rankings',
+                                    location: data.location,
+                                    players: players,
+                                    slotId: lastSlot.id
+                                }));
+                            }
+                            
+                            const lastSlotId = !activeSlot && slots.length > 0 ? slots[0].id : null;
                             await this.broadcastGameState({
                                 active: !!activeSlot,
                                 slotName: activeSlot?.name,
@@ -40,8 +57,8 @@ class WebSocketService {
                                     `Game Session "${activeSlot.name}" is active!` : 
                                     'Waiting for game session to start...',
                                 slots: slots,
-                                activeSlotId: activeSlot?.id
-                            });
+                                activeSlotId: activeSlot?.id || lastSlotId
+                            }, data.location);
                             break;
                         case 'getRankings':
                             if (data.slotId) {
@@ -60,6 +77,7 @@ class WebSocketService {
                             const clientLocation = this.getClientLocation(ws);
                             const allSlots = await this.databaseService.getSlotsForLocation(clientLocation);
                             const currentActiveSlot = await this.databaseService.getActiveSlot(clientLocation);
+                            const fallbackSlotId = !currentActiveSlot && allSlots.length > 0 ? allSlots[0].id : null;
                             this.sendToClient(ws, JSON.stringify({
                                 type: 'gameStatus',
                                 status: {
@@ -69,7 +87,7 @@ class WebSocketService {
                                         `Game Session "${currentActiveSlot.name}" is active!` : 
                                         'Waiting for game session to start...',
                                     slots: allSlots,
-                                    activeSlotId: currentActiveSlot?.id,
+                                    activeSlotId: currentActiveSlot?.id || fallbackSlotId,
                                     hasSlots: allSlots.length > 0
                                 }
                             }));

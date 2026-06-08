@@ -86,6 +86,50 @@
         </div>
     </div>
     <div class="container">
+        <h2>Admin Panel</h2>
+        <p>Access the admin panel at <code>/admin</code> to manage slots per location.</p>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:2rem;">
+            <thead><tr style="background:#f7fafc;"><th style="padding:0.5rem; border:1px solid #e2e8f0;">Location</th><th style="padding:0.5rem; border:1px solid #e2e8f0;">Email</th></tr></thead>
+            <tbody>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Hyderabad</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>hyderabad@admin.com</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Pune</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>pune@admin.com</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Chennai</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>chennai@admin.com</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Gurgaon</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>gurgaon@admin.com</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Bangalore</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>bangalore@admin.com</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Coimbatore</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>coimbatore@admin.com</code></td></tr>
+            </tbody>
+        </table>
+
+        <h2>API Endpoints</h2>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/auth/login</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Authenticate an admin user. Returns the associated location on success.</div>
+                <div class="parameters">
+                    <h3>Request Body</h3>
+                    <div class="parameter">
+                        <code>email</code> <span class="required">required</span>
+                        <p>Admin email (e.g. hyderabad@admin.com)</p>
+                    </div>
+                    <div class="parameter">
+                        <code>password</code> <span class="required">required</span>
+                        <p>Admin password</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>{
+  "status": "success",
+  "location": "Hyderabad"
+}</code></pre>
+                </div>
+            </div>
+        </div>
+
         <div class="endpoint">
             <div class="endpoint-header">
                 <span class="method post">POST</span>
@@ -136,12 +180,16 @@
                 <span class="path">/api/slots/start</span>
             </div>
             <div class="endpoint-content">
-                <div class="description">Start a new game slot</div>
+                <div class="description">Start a new game slot for a specific location. Each location can have one active slot at a time.</div>
                 <div class="parameters">
                     <h3>Request Body</h3>
                     <div class="parameter">
                         <code>slotName</code> <span class="required">required</span>
                         <p>The name of the new slot to start</p>
+                    </div>
+                    <div class="parameter">
+                        <code>location</code> <span class="required">optional</span>
+                        <p>The location for this slot (e.g. Hyderabad, Pune, Chennai, Gurgaon, Bangalore, Coimbatore)</p>
                     </div>
                 </div>
                 <div class="response">
@@ -149,10 +197,11 @@
                     <pre><code>{
   "status": "success",
   "data": {
-    "id": "string",
+    "id": number,
     "name": "string",
-    "active": true,
-    "created_at": "timestamp"
+    "status": "active",
+    "location": "string",
+    "start_time": "timestamp"
   }
 }</code></pre>
                 </div>
@@ -258,6 +307,10 @@
                         <code>email</code> <span class="required">required</span>
                         <p>The email address to check</p>
                     </div>
+                    <div class="parameter">
+                        <code>location</code> <span class="required">optional</span>
+                        <p>The location to check the active slot for</p>
+                    </div>
                 </div>
                 <div class="response">
                     <h3>Response</h3>
@@ -279,6 +332,73 @@
     "timetaken": "number",
     "displaytime": "string"
   } || null
+}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/slots/location/:location</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Get all slots for a specific location</div>
+                <div class="parameters">
+                    <h3>URL Parameters</h3>
+                    <div class="parameter">
+                        <code>location</code> <span class="required">required</span>
+                        <p>The location name (Hyderabad, Pune, Chennai, Gurgaon, Bangalore, Coimbatore)</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response</h3>
+                    <pre><code>[{
+  "id": number,
+  "name": "string",
+  "status": "active" | "completed",
+  "location": "string",
+  "start_time": "timestamp",
+  "end_time": "timestamp" | null,
+  "duration": "MM:SS" | "HH:MM:SS"
+}]</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/slots/active/:location</span>
+            </div>
+            <div class="endpoint-content">
+                <div class="description">Get the currently active slot for a specific location</div>
+                <div class="parameters">
+                    <h3>URL Parameters</h3>
+                    <div class="parameter">
+                        <code>location</code> <span class="required">required</span>
+                        <p>The location name (Hyderabad, Pune, Chennai, Gurgaon, Bangalore, Coimbatore)</p>
+                    </div>
+                </div>
+                <div class="response">
+                    <h3>Response (slot running)</h3>
+                    <pre><code>{
+  "status": "success",
+  "active": true,
+  "slot": {
+    "id": number,
+    "name": "string",
+    "status": "active",
+    "location": "string",
+    "start_time": "timestamp",
+    "end_time": null
+  }
+}</code></pre>
+                    <h3>Response (no active slot)</h3>
+                    <pre><code>{
+  "status": "success",
+  "active": false,
+  "slot": null
 }</code></pre>
                 </div>
             </div>

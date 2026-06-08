@@ -47,6 +47,20 @@ class ApiRouter {
             }
         });
 
+        // Get active slot for a specific location
+        this.router.get('/slots/active/:location', async (req, res) => {
+            try {
+                const activeSlot = await this.databaseService.getActiveSlot(req.params.location);
+                if (!activeSlot) {
+                    return res.json({ status: 'success', active: false, slot: null });
+                }
+                res.json({ status: 'success', active: true, slot: activeSlot });
+            } catch (error) {
+                console.error('Error in GET /slots/active/:location:', error);
+                res.status(500).json({ status: 'error', message: error.message });
+            }
+        });
+
         // Add or update player
         this.router.post('/player', async (req, res) => {
             try {
