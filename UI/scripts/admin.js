@@ -18,6 +18,7 @@
     const activeSlotName = document.getElementById('active-slot-name');
     const timerDisplay = document.getElementById('timer');
     const slotNameInput = document.getElementById('slot-name');
+    const slotLevelSelect = document.getElementById('slot-level');
     const startBtn = document.getElementById('start-btn');
     const stopBtn = document.getElementById('stop-btn');
     const historyBody = document.getElementById('history-body');
@@ -128,12 +129,13 @@
             slotNameInput.focus();
             return;
         }
+        const level = slotLevelSelect.value;
         startBtn.disabled = true;
         try {
             const res = await fetch(`${API_BASE}/slots/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ slotName: name, location: currentLocation })
+                body: JSON.stringify({ slotName: name, location: currentLocation, level })
             });
             const data = await res.json();
             if (!res.ok) {

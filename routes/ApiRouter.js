@@ -117,11 +117,11 @@ class ApiRouter {
         // Start new slot
         this.router.post('/slots/start', async (req, res) => {
             try {
-                const { slotName, location } = req.body;
+                const { slotName, location, level } = req.body;
                 if (!slotName) {
                     return res.status(400).json({ status: 'error', message: 'Slot name is required' });
                 }
-                const slot = await this.webSocketService.startSlot(slotName, location || null);
+                const slot = await this.webSocketService.startSlot(slotName, location || null, level || 'simple');
                 res.json({ status: 'success', data: slot });
             } catch (error) {
                 console.error('Error in POST /slots/start:', error);

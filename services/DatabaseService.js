@@ -39,6 +39,13 @@ class DatabaseService {    constructor(dbPath) {
             } catch (e) {
                 // Column already exists, ignore
             }
+
+            // Add level column if it doesn't exist (migration for existing DB)
+            try {
+                await this.db.exec(`ALTER TABLE slots ADD COLUMN level TEXT DEFAULT 'simple'`);
+            } catch (e) {
+                // Column already exists, ignore
+            }
             
             await this.db.exec(`
                 CREATE TABLE IF NOT EXISTS players (
@@ -141,7 +148,7 @@ class DatabaseService {    constructor(dbPath) {
     }
 
     // Slot management methods
-    async startSlot(slotName, location = null) {
+    async startSlot(slotName, location = null, level = 'simple') {
         try {
             // Check if there's already an active slot for this location
             const activeSlot = await this.getActiveSlot(location);
@@ -151,8 +158,8 @@ class DatabaseService {    constructor(dbPath) {
 
             // Create new slot
             const result = await this.db.run(
-                'INSERT INTO slots (name, status, location, start_time) VALUES (?, ?, ?, datetime("now"))',
-                [slotName, 'active', location]
+                'INSERT INTO slots (name, status, location, level, start_time) VALUES (?, ?, ?, ?, datetime("now"))',
+                [slotName, 'active', location, level]
             );
 
             return {
@@ -160,6 +167,7 @@ class DatabaseService {    constructor(dbPath) {
                 name: slotName,
                 status: 'active',
                 location: location,
+                level: level,
                 start_time: new Date().toISOString()
             };
         } catch (error) {
@@ -171,7 +179,7 @@ class DatabaseService {    constructor(dbPath) {
     async getSlotsForLocation(location) {
         try {
             return await this.db.all(
-                'SELECT id, name, status, location, ' +
+                'SELECT id, name, status, location, level, ' +
                 'datetime(start_time) as start_time, ' +
                 'datetime(end_time) as end_time, ' +
                 'CASE ' +
@@ -219,7 +227,7 @@ class DatabaseService {    constructor(dbPath) {
         try {
             if (location) {
                 return await this.db.get(
-                    `SELECT id, name, status, location,
+                    `SELECT id, name, status, location, level,
                     datetime(start_time) as start_time,
                     datetime(end_time) as end_time
                     FROM slots 
@@ -230,7 +238,7 @@ class DatabaseService {    constructor(dbPath) {
                 );
             }
             return await this.db.get(
-                `SELECT id, name, status, location,
+                `SELECT id, name, status, location, level,
                 datetime(start_time) as start_time,
                 datetime(end_time) as end_time
                 FROM slots 

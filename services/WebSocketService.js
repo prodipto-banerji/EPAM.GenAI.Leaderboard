@@ -169,9 +169,9 @@ class WebSocketService {
         }
     }
 
-    async startSlot(slotName, location = null) {
+    async startSlot(slotName, location = null, level = 'simple') {
         try {
-            const newSlot = await this.databaseService.startSlot(slotName, location);
+            const newSlot = await this.databaseService.startSlot(slotName, location, level);
             const locationSlots = location 
                 ? await this.databaseService.getSlotsForLocation(location)
                 : await this.databaseService.getAllSlots();

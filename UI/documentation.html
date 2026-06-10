@@ -191,6 +191,10 @@
                         <code>location</code> <span class="required">optional</span>
                         <p>The location for this slot (e.g. Hyderabad, Pune, Chennai, Gurgaon, Bangalore, Coimbatore)</p>
                     </div>
+                    <div class="parameter">
+                        <code>level</code> <span class="required">optional</span>
+                        <p>Game difficulty level: <code>"simple"</code> or <code>"advanced"</code>. Defaults to <code>"simple"</code>.</p>
+                    </div>
                 </div>
                 <div class="response">
                     <h3>Response</h3>
@@ -201,6 +205,7 @@
     "name": "string",
     "status": "active",
     "location": "string",
+    "level": "simple" | "advanced",
     "start_time": "timestamp"
   }
 }</code></pre>
@@ -358,6 +363,7 @@
   "name": "string",
   "status": "active" | "completed",
   "location": "string",
+  "level": "simple" | "advanced",
   "start_time": "timestamp",
   "end_time": "timestamp" | null,
   "duration": "MM:SS" | "HH:MM:SS"
@@ -390,6 +396,7 @@
     "name": "string",
     "status": "active",
     "location": "string",
+    "level": "simple" | "advanced",
     "start_time": "timestamp",
     "end_time": null
   }
