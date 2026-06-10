@@ -996,15 +996,15 @@ function showGameRunningMessage(isActiveGame = true, isNoSlotsState = false) {
     
     if (isNoSlotsState) {
         // No slots exist - show waiting for game to start message
-        gameRunningDiv.className = 'no-players-message'; // Use same styling as "Session Completed"
+        gameRunningDiv.className = 'no-players-message';
         gameRunningDiv.innerHTML = `
             <div class="no-players-content">
-                <div class="no-players-icon">⏳</div>
-                <h2>Waiting for game session to start...</h2>
-                <p>No game sessions are currently available</p>
+                <div class="no-players-icon">🤖</div>
+                <h2>ZYRO is Waiting...</h2>
+                <p>No building sessions are currently active in this Citadel</p>
                 <div class="try-next-prompt">
-                    <span class="try-text">Stay tuned!</span>
-                    <div class="scan-qr">👉 Game sessions will appear here when available!</div>
+                    <span class="try-text">Stand by, Builder!</span>
+                    <div class="scan-qr">⚡ Sessions will appear here when the Citadel gates open!</div>
                 </div>
             </div>
         `;
@@ -1013,12 +1013,12 @@ function showGameRunningMessage(isActiveGame = true, isNoSlotsState = false) {
         gameRunningDiv.className = 'game-running-message';
         gameRunningDiv.innerHTML = `
             <div class="game-running-content">
-                <div class="game-running-icon">🎮</div>
-                <h2>Game is Running!</h2>
-                <p>Waiting for players to join the adventure...</p>
+                <div class="game-running-icon">🏰</div>
+                <h2>Citadel is Under Construction!</h2>
+                <p>Waiting for Builders to join ZYRO's quest...</p>
                 <div class="play-prompt">
-                    <span class="play-text">Ready to play?</span>
-                    <div class="scan-qr">👉 Scan the QR code on the right!</div>
+                    <span class="play-text">Ready to build your Palace?</span>
+                    <div class="scan-qr">⚡ Scan the QR code to start your journey!</div>
                 </div>
             </div>
         `;
@@ -1027,12 +1027,12 @@ function showGameRunningMessage(isActiveGame = true, isNoSlotsState = false) {
         gameRunningDiv.className = 'no-players-message';
         gameRunningDiv.innerHTML = `
             <div class="no-players-content">
-                <div class="no-players-icon">😴</div>
-                <h2>Session Completed</h2>
-                <p>No one played in this session</p>
+                <div class="no-players-icon">🔮</div>
+                <h2>Session Complete</h2>
+                <p>No builders joined this construction phase</p>
                 <div class="try-next-prompt">
-                    <span class="try-text">Maybe next time!</span>
-                    <div class="scan-qr">👉 Scan the QR code to join future games!</div>
+                    <span class="try-text">The Citadel awaits!</span>
+                    <div class="scan-qr">⚡ Scan the QR code to join the next building session!</div>
                 </div>
             </div>
         `;

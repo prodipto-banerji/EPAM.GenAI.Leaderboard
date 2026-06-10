@@ -3,36 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jungle Leaderboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <title>Prompt to Palace — The GenAI Citadel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles/dashboard.css">
 </head>
 <body>
+    <!-- Animated background particles -->
+    <div class="citadel-particles" id="particles"></div>
+
     <div class="container">
         <!-- Location Selector -->
         <div class="location-selector" id="locationSelector">
-            <h2>🌴 Choose Your Territory 🌴</h2>            <div class="location-options">
+            <div class="citadel-logo-selector">🤖</div>
+            <h2>⚡ Choose Your Citadel ⚡</h2>
+            <p class="selector-subtitle">ZYRO awaits your command, Builder.</p>
+            <div class="location-options">
                 <button class="location-button" data-location="Hyderabad">🏰 Hyderabad</button>
-                <button class="location-button" data-location="Pune">🌄 Pune</button>
-                <button class="location-button" data-location="Chennai">🌊 Chennai</button>
-                <button class="location-button" data-location="Gurgaon">🌄 Gurgaon</button>
-                <button class="location-button" data-location="Bangalore">🌊 Bangalore</button>
+                <button class="location-button" data-location="Pune">⚙️ Pune</button>
+                <button class="location-button" data-location="Chennai">🔮 Chennai</button>
+                <button class="location-button" data-location="Gurgaon">🛡️ Gurgaon</button>
+                <button class="location-button" data-location="Bangalore">🧠 Bangalore</button>
                 <button class="location-button" data-location="Coimbatore">🏛️ Coimbatore</button>
             </div>
         </div>
+
         <!-- Dashboard -->
         <div class="dashboard-header">
             <div class="header-left">
-                <img src="images/logo.png" alt="Jungle Quest Logo" class="logo">
-                <h1>Jungle Quest Leaderboard</h1>
+                <div class="logo-zyro">🤖</div>
+                <div class="header-title-group">
+                    <h1>The GenAI Citadel</h1>
+                    <span class="header-subtitle">Prompt to Palace — Leaderboard</span>
+                </div>
             </div>
             <div class="header-center">
                 <div class="location-display">
-                    Territory: <span id="currentLocation">Not Selected</span>
-                    <button class="change-location" id="changeLocationBtn">Change Territory</button>
+                    Citadel: <span id="currentLocation">Not Selected</span>
+                    <button class="change-location" id="changeLocationBtn">Change Citadel</button>
                 </div>
             </div>
         </div>
+
         <!-- Main Layout: Leaderboard Left, QR Code Right -->
         <div class="dashboard-layout">
             <!-- Left Side: Leaderboard Content -->
@@ -61,7 +72,7 @@
                         <thead>
                             <tr>
                                 <th>Rank</th>
-                                <th>Player</th>
+                                <th>Builder</th>
                                 <th>Score</th>
                                 <th>Time</th>
                             </tr>
@@ -70,9 +81,9 @@
                             <!-- Will be filled by JavaScript -->
                         </tbody>
                     </table>
-                      <!-- Loading indicator for infinite scroll -->
+                    <!-- Loading indicator for infinite scroll -->
                     <div id="loadingIndicator" style="display: none; text-align: center; padding: 20px;">
-                        Loading more players...
+                        Loading more builders...
                     </div>
                 </div>
             </div>
@@ -82,13 +93,31 @@
                 <div class="qr-content">
                     <img src="images/qr.png" alt="QR Code" class="qr-code-main">
                     <div class="qr-text-section">
-                        <h3>Want to Play Jungle Quest?</h3>
-                        <p>Scan this QR code to join the adventure!</p>
+                        <h3>Join the Citadel!</h3>
+                        <p>Scan to build your palace with ZYRO 🤖</p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
     <script src="scripts/dashboard.js"></script>
+    <script>
+        // Generate floating particles for the citadel background
+        (function() {
+            const container = document.getElementById('particles');
+            const symbols = ['⚡', '🧠', '⚙️', '💎', '🔮', '✨', '🛡️', '🏰'];
+            for (let i = 0; i < 20; i++) {
+                const p = document.createElement('span');
+                p.className = 'particle';
+                p.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+                p.style.left = Math.random() * 100 + '%';
+                p.style.animationDelay = Math.random() * 15 + 's';
+                p.style.animationDuration = (15 + Math.random() * 20) + 's';
+                p.style.fontSize = (12 + Math.random() * 18) + 'px';
+                container.appendChild(p);
+            }
+        })();
+    </script>
 </body>
 </html>
