@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slot Admin Panel</title>
+    <link rel="stylesheet" href="styles/admin.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="container">
+        <div class="login-card">
+            <h1>Slot Admin Login</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" placeholder="location@admin.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter password" required>
+                </div>
+                <div id="login-error" class="error-msg hidden"></div>
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Panel (hidden until login) -->
+    <div id="admin-panel" class="container hidden">
+        <header class="panel-header">
+            <h1>Slot Management</h1>
+            <div class="header-info">
+                <span id="location-badge" class="badge"></span>
+                <button id="logout-btn" class="btn btn-secondary">Logout</button>
+            </div>
+        </header>
+
+        <!-- Active Slot Section -->
+        <section class="slot-control">
+            <h2>Current Slot</h2>
+            <div id="no-active-slot">
+                <div class="form-group">
+                    <label for="slot-name">Slot Name</label>
+                    <input type="text" id="slot-name" placeholder="Enter slot name" required>
+                </div>
+                <div class="form-group">
+                    <label for="slot-level">Level</label>
+                    <select id="slot-level">
+                        <option value="simple">Simple</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                </div>
+                <button id="start-btn" class="btn btn-success">Start Slot</button>
+            </div>
+            <div id="active-slot" class="hidden">
+                <div class="active-slot-info">
+                    <p class="slot-label">Running: <strong id="active-slot-name"></strong></p>
+                    <p class="timer" id="timer">00:00:00</p>
+                </div>
+                <button id="stop-btn" class="btn btn-danger">Stop Slot</button>
+            </div>
+        </section>
+
+        <!-- Slot History Section -->
+        <section class="slot-history">
+            <h2>Previous Slots</h2>
+            <table id="history-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Slot Name</th>
+                        <th>Status</th>
+                        <th>Start Time</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body">
+                    <tr><td colspan="5" class="empty-msg">No slots yet</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <script src="scripts/admin.js"></script>
+</body>
+</html>

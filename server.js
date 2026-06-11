@@ -58,6 +58,9 @@ app.use(express.static(UI_PATH));
 app.get('/', (req, res) => {
     res.sendFile(path.join(UI_PATH, 'dashboard.html'));
 });
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(UI_PATH, 'admin.html'));
+});
 
 // Start the server
 const PORT = process.env.PORT || 3000;

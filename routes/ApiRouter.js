@@ -16,6 +16,51 @@ class ApiRouter {
             res.sendFile(path.join(__dirname, '../UI/documentation.html'));
         });
 
+        // Admin login
+        this.router.post('/auth/login', (req, res) => {
+            const { email, password } = req.body;
+            const credentials = {
+                'hyderabad@admin.com': { password: 'admin', location: 'Hyderabad' },
+                'pune@admin.com': { password: 'admin', location: 'Pune' },
+                'chennai@admin.com': { password: 'admin', location: 'Chennai' },
+                'gurgaon@admin.com': { password: 'admin', location: 'Gurgaon' },
+                'bangalore@admin.com': { password: 'admin', location: 'Bangalore' },
+                'coimbatore@admin.com': { password: 'admin', location: 'Coimbatore' }
+            };
+
+            const user = credentials[email];
+            if (!user || user.password !== password) {
+                return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
+            }
+
+            res.json({ status: 'success', location: user.location });
+        });
+
+        // Get slots for a specific location
+        this.router.get('/slots/location/:location', async (req, res) => {
+            try {
+                const slots = await this.databaseService.getSlotsForLocation(req.params.location);
+                res.json(slots);
+            } catch (error) {
+                console.error('Error in GET /slots/location/:location:', error);
+                res.status(500).json({ status: 'error', message: error.message });
+            }
+        });
+
+        // Get active slot for a specific location
+        this.router.get('/slots/active/:location', async (req, res) => {
+            try {
+                const activeSlot = await this.databaseService.getActiveSlot(req.params.location);
+                if (!activeSlot) {
+                    return res.json({ status: 'success', active: false, slot: null });
+                }
+                res.json({ status: 'success', active: true, slot: activeSlot });
+            } catch (error) {
+                console.error('Error in GET /slots/active/:location:', error);
+                res.status(500).json({ status: 'error', message: error.message });
+            }
+        });
+
         // Add or update player
         this.router.post('/player', async (req, res) => {
             try {
@@ -31,13 +76,13 @@ class ApiRouter {
                 await this.webSocketService.broadcastRankings(req.body.location);
 
                 // Also broadcast updated game state to refresh slot data
-                const activeSlot = await this.databaseService.getActiveSlot();
-                const slots = await this.databaseService.getAllSlots();
+                const activeSlot = await this.databaseService.getActiveSlot(req.body.location);
+                const slots = await this.databaseService.getSlotsForLocation(req.body.location);
                 await this.webSocketService.broadcastGameState({
                     active: !!activeSlot,
                     slotName: activeSlot?.name,
                     message: activeSlot ? 
-                        `Game Session "${activeSlot.name}" is inactive!` : 
+                        `Game Session "${activeSlot.name}" is active!` : 
                         'Waiting for game session to start...',
                     slots: slots,
                     activeSlotId: activeSlot?.id
@@ -72,11 +117,11 @@ class ApiRouter {
         // Start new slot
         this.router.post('/slots/start', async (req, res) => {
             try {
-                const { slotName } = req.body;
+                const { slotName, location, level } = req.body;
                 if (!slotName) {
                     return res.status(400).json({ status: 'error', message: 'Slot name is required' });
                 }
-                const slot = await this.webSocketService.startSlot(slotName);
+                const slot = await this.webSocketService.startSlot(slotName, location || null, level || 'simple');
                 res.json({ status: 'success', data: slot });
             } catch (error) {
                 console.error('Error in POST /slots/start:', error);
@@ -123,7 +168,7 @@ class ApiRouter {
         // Check if email has already played in active slot
         this.router.post('/check-email', async (req, res) => {
             try {
-                const { email } = req.body;
+                const { email, location } = req.body;
                 
                 if (!email) {
                     return res.status(400).json({ 
@@ -132,7 +177,7 @@ class ApiRouter {
                     });
                 }
 
-                const result = await this.databaseService.checkEmailInActiveSlot(email);
+                const result = await this.databaseService.checkEmailInActiveSlot(email, location);
                 
                 res.json({ 
                     status: 'success',

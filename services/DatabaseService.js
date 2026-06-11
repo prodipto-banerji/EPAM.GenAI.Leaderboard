@@ -26,11 +26,26 @@ class DatabaseService {    constructor(dbPath) {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    location TEXT,
                     start_time TIMESTAMP,
                     end_time TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             `);
+
+            // Add location column if it doesn't exist (migration for existing DB)
+            try {
+                await this.db.exec(`ALTER TABLE slots ADD COLUMN location TEXT`);
+            } catch (e) {
+                // Column already exists, ignore
+            }
+
+            // Add level column if it doesn't exist (migration for existing DB)
+            try {
+                await this.db.exec(`ALTER TABLE slots ADD COLUMN level TEXT DEFAULT 'simple'`);
+            } catch (e) {
+                // Column already exists, ignore
+            }
             
             await this.db.exec(`
                 CREATE TABLE IF NOT EXISTS players (
@@ -95,9 +110,9 @@ class DatabaseService {    constructor(dbPath) {
 
     async addPlayer(playerData) {
         try {
-            const activeSlot = await this.getActiveSlot();
+            const activeSlot = await this.getActiveSlot(playerData.location);
             if (!activeSlot) {
-                throw new Error('No active slot available');
+                throw new Error('No active slot available for this location');
             }
 
             await this.db.run(
@@ -133,28 +148,50 @@ class DatabaseService {    constructor(dbPath) {
     }
 
     // Slot management methods
-    async startSlot(slotName) {
+    async startSlot(slotName, location = null, level = 'simple') {
         try {
-            // Check if there's already an active slot
-            const activeSlot = await this.getActiveSlot();
+            // Check if there's already an active slot for this location
+            const activeSlot = await this.getActiveSlot(location);
             if (activeSlot) {
-                throw new Error('Another slot is already active');
+                throw new Error('Another slot is already active for this location');
             }
 
             // Create new slot
             const result = await this.db.run(
-                'INSERT INTO slots (name, status, start_time) VALUES (?, ?, datetime("now"))',
-                [slotName, 'active']
+                'INSERT INTO slots (name, status, location, level, start_time) VALUES (?, ?, ?, ?, datetime("now"))',
+                [slotName, 'active', location, level]
             );
 
             return {
                 id: result.lastID,
                 name: slotName,
                 status: 'active',
+                location: location,
+                level: level,
                 start_time: new Date().toISOString()
             };
         } catch (error) {
             console.error('Error starting slot:', error);
+            throw error;
+        }
+    }
+
+    async getSlotsForLocation(location) {
+        try {
+            return await this.db.all(
+                'SELECT id, name, status, location, level, ' +
+                'datetime(start_time) as start_time, ' +
+                'datetime(end_time) as end_time, ' +
+                'CASE ' +
+                '    WHEN (strftime("%s", COALESCE(end_time, datetime("now"))) - strftime("%s", start_time)) / 3600 >= 1 ' +
+                '    THEN strftime("%H:%M:%S", julianday(COALESCE(end_time, datetime("now"))) - julianday(start_time)) ' +
+                '    ELSE strftime("%M:%S", julianday(COALESCE(end_time, datetime("now"))) - julianday(start_time)) ' +
+                'END as duration ' +
+                'FROM slots WHERE location = ? ORDER BY start_time DESC',
+                [location]
+            );
+        } catch (error) {
+            console.error('Error getting slots for location:', error);
             throw error;
         }
     }
@@ -186,10 +223,22 @@ class DatabaseService {    constructor(dbPath) {
         }
     }
 
-    async getActiveSlot() {
+    async getActiveSlot(location = null) {
         try {
+            if (location) {
+                return await this.db.get(
+                    `SELECT id, name, status, location, level,
+                    datetime(start_time) as start_time,
+                    datetime(end_time) as end_time
+                    FROM slots 
+                    WHERE status = 'active' AND location = ?
+                    ORDER BY start_time DESC 
+                    LIMIT 1`,
+                    [location]
+                );
+            }
             return await this.db.get(
-                `SELECT id, name, status, 
+                `SELECT id, name, status, location, level,
                 datetime(start_time) as start_time,
                 datetime(end_time) as end_time
                 FROM slots 
@@ -227,10 +276,10 @@ class DatabaseService {    constructor(dbPath) {
         }
     }    async addOrUpdatePlayer(playerData) {
         try {
-            // Get the active slot
-            const activeSlot = await this.getActiveSlot();
+            // Get the active slot for this player's location
+            const activeSlot = await this.getActiveSlot(playerData.location);
             if (!activeSlot) {
-                throw new Error('No active slot available');
+                throw new Error('No active slot available for this location');
             }            // Always use current timestamp for the date
             const formattedDate = new Date().toISOString();
 
@@ -279,9 +328,9 @@ class DatabaseService {    constructor(dbPath) {
         }
     }
 
-    async checkEmailInActiveSlot(email) {
+    async checkEmailInActiveSlot(email, location = null) {
         try {
-            const activeSlot = await this.getActiveSlot();
+            const activeSlot = await this.getActiveSlot(location);
             
             if (!activeSlot) {
                 return { hasPlayed: false, message: 'No active slot found' };

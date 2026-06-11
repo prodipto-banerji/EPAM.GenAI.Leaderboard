@@ -4,6 +4,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const WebSocket = require('ws');
 const Ranker = require('./Model/Ranker');
 const DatabaseService = require('./services/DatabaseService');
 const WebSocketService = require('./services/WebSocketService');
@@ -80,6 +81,9 @@ const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 let db; // <-- Add this line to define db globally
 let currentSlot = null; // <-- Add this line to define currentSlot globally
+
+// Client management for WebSocket connections
+const clients = new Map(); // <-- Track WebSocket clients and their locations
 
 // Ensure database is initialized before any db access
 async function ensureDbInitialized() {
