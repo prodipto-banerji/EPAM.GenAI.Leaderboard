@@ -39,6 +39,7 @@ jobs:
           path: release.zip
 
   deploy:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: build
     permissions:
