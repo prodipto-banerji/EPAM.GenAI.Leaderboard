@@ -16,15 +16,45 @@ class WebSocketService {
         });
 
         this.setupWebSocketHandlers();
+        this.startHeartbeat();
+    }
+
+    // Periodically ping clients and terminate unresponsive ones
+    startHeartbeat() {
+        this.heartbeatInterval = setInterval(() => {
+            this.wss.clients.forEach((ws) => {
+                if (ws.isAlive === false) {
+                    console.log('Terminating unresponsive client');
+                    this.removeClient(ws);
+                    return ws.terminate();
+                }
+                ws.isAlive = false;
+                ws.ping();
+            });
+        }, 30000); // Every 30 seconds
     }
 
     setupWebSocketHandlers() {
         this.wss.on('connection', (ws) => {
             console.log('New client connected');
+            ws.isAlive = true;
+
+            // Handle pong responses from native WebSocket ping
+            ws.on('pong', () => {
+                ws.isAlive = true;
+            });
             
             ws.on('message', async (message) => {
                 try {
                     const data = JSON.parse(message);
+                    
+                    // Handle client-level ping (application-layer keepalive)
+                    if (data.type === 'ping') {
+                        ws.isAlive = true;
+                        this.sendToClient(ws, JSON.stringify({ type: 'pong' }));
+                        return;
+                    }
+                    
                     switch (data.type) {
                         case 'setLocation':
                             this.addClient(ws, data.location);

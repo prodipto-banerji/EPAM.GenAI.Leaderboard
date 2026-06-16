@@ -39,6 +39,13 @@ const GAME_STATUS_REQUEST_DEBOUNCE_MS = 1000; // 1 second between game status re
 let gameStatusRequestCount = 0;
 let gameStatusResponseCount = 0;
 
+// Reconnection state (outside connectWebSocket to persist across calls)
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+let connectionId = 0; // Incremented on each intentional connect to invalidate stale onclose handlers
+let intentionalClose = false; // Flag to suppress reconnection on intentional disconnect
+let keepaliveInterval = null; // Client-side keepalive ping interval
+
 function selectLocation(location) {
     // Clear current data first
     clearDashboard();
@@ -111,42 +118,53 @@ function clearDashboard() {
 // WebSocket connection management
 function connectWebSocket(location) {
     return new Promise((resolve, reject) => {
-        // Close existing connection if any
+        // Close existing connection if any (mark as intentional so onclose doesn't reconnect)
         if (ws) {
+            intentionalClose = true;
             ws.close();
+            intentionalClose = false;
         }
+
+        // Clear any existing keepalive interval
+        if (keepaliveInterval) {
+            clearInterval(keepaliveInterval);
+            keepaliveInterval = null;
+        }
+
+        // Increment connection ID to invalidate any stale onclose handlers
+        connectionId++;
+        const myConnectionId = connectionId;
 
         // Get the current host and determine WebSocket protocol
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let wsUrl;
-        
-        // Check if we're running locally or on Azure
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            // Local development
-            wsUrl = `${protocol}//${window.location.host}`;
-        } else {
-            // Production - use current host
-            wsUrl = `${protocol}//${window.location.host}`;
-        }
+        const wsUrl = `${protocol}//${window.location.host}`;
         
         console.log('Connecting to WebSocket at:', wsUrl);
         
         // Connect to WebSocket server
         ws = new WebSocket(wsUrl);
-        
-        let reconnectAttempts = 0;
-        const maxReconnectAttempts = 5;
 
         ws.onopen = () => {
             console.log('WebSocket connection established');
-            // Send location and request initial game status
+            // Reset reconnect attempts on successful connection
+            reconnectAttempts = 0;
+            // Send location - server already broadcasts game status in response to setLocation
             ws.send(JSON.stringify({ type: 'setLocation', location }));
-            requestGameStatus(); // Use rate-limited function
+            
+            // Start keepalive ping every 30 seconds to prevent proxy/load-balancer timeouts
+            keepaliveInterval = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000);
+            
             resolve(ws);
         };
 
         ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
+            // Ignore pong responses
+            if (data.type === 'pong') return;
             
             switch (data.type) {
                 case 'rankings':
@@ -284,15 +302,34 @@ function connectWebSocket(location) {
 
         ws.onclose = () => {
             console.log('WebSocket connection closed');
-            // Attempt to reconnect after 5 seconds
-            setTimeout(() => {
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    console.log(`Attempting to reconnect... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
-                    reconnectAttempts++;
-                    connectWebSocket(location)
-                        .catch(error => console.error('Reconnection failed:', error));
-                }
-            }, 5000);
+            
+            // Clear keepalive interval
+            if (keepaliveInterval) {
+                clearInterval(keepaliveInterval);
+                keepaliveInterval = null;
+            }
+
+            // Don't reconnect if this was an intentional close or if this is a stale handler
+            if (intentionalClose || myConnectionId !== connectionId) {
+                console.log('Skipping reconnection (intentional close or stale handler)');
+                return;
+            }
+
+            // Attempt to reconnect with exponential backoff
+            if (reconnectAttempts < maxReconnectAttempts) {
+                const delay = Math.min(5000 * Math.pow(1.5, reconnectAttempts), 30000);
+                console.log(`Attempting to reconnect in ${Math.round(delay/1000)}s... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+                reconnectAttempts++;
+                setTimeout(() => {
+                    // Check again if this connection ID is still current
+                    if (myConnectionId === connectionId) {
+                        connectWebSocket(location)
+                            .catch(error => console.error('Reconnection failed:', error));
+                    }
+                }, delay);
+            } else {
+                console.log('Max reconnection attempts reached. Please refresh the page.');
+            }
         };
     });
 }
