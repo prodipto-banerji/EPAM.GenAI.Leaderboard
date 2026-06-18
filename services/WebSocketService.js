@@ -97,7 +97,8 @@ class WebSocketService {
                                 this.sendToClient(ws, JSON.stringify({
                                     type: 'rankings',
                                     location: data.location,
-                                    players: players
+                                    players: players,
+                                    slotId: data.slotId
                                 }));
                             } else {
                                 await this.broadcastRankings(data.location);
@@ -221,11 +222,22 @@ class WebSocketService {
     async broadcastRankings(location) {
         try {
             const activeSlot = await this.databaseService.getActiveSlot(location);
-            const players = await this.databaseService.getPlayersForLocation(location, activeSlot?.id);
+            let slotId = activeSlot?.id;
+
+            // If no active slot, use the most recent slot for this location
+            if (!slotId) {
+                const slots = await this.databaseService.getSlotsForLocation(location);
+                if (slots.length > 0) {
+                    slotId = slots[0].id;
+                }
+            }
+
+            const players = await this.databaseService.getPlayersForSlot(slotId, location);
             const message = {
                 type: 'rankings',
                 location: location,
-                players: players
+                players: players,
+                slotId: slotId
             };
             this.broadcastToLocation(JSON.stringify(message), location);
         } catch (error) {
@@ -267,7 +279,7 @@ class WebSocketService {
                 slotName: stoppedSlot.name,
                 message: 'Game session has ended',
                 slots: locationSlots,
-                activeSlotId: null,
+                activeSlotId: stoppedSlot.id,
                 lastSlotInfo: lastSlot
             }, location);
             return stoppedSlot;

@@ -201,8 +201,11 @@ function connectWebSocket(location) {
                         updateSlotTabs(data.status.slots, data.status.activeSlotId);
                         
                         // Check if the active slot has changed (game ended) or game status changed
-                        const gameStateChanged = (previousActiveSlotId && previousActiveSlotId !== data.status.activeSlotId) ||
-                                               (wasGameActive !== data.status.active);
+                        // Only consider it a "state change" if we had a previous state (not initial load)
+                        const gameStateChanged = previousActiveSlotId !== null && (
+                            (previousActiveSlotId !== data.status.activeSlotId) ||
+                            (wasGameActive !== data.status.active)
+                        );
                         
                         // Add debouncing to prevent rapid state change processing
                         const now = Date.now();
@@ -266,15 +269,18 @@ function connectWebSocket(location) {
                         else if (data.status.activeSlotId) {
                             currentSlotId = data.status.activeSlotId;
                             
-                            // Still request fresh data to ensure we're up to date
-                            const now = Date.now();
-                            if (now - lastRequestTime > REQUEST_DEBOUNCE_MS) {
-                                lastRequestTime = now;
-                                ws.send(JSON.stringify({ 
-                                    type: 'getRankings', 
-                                    location: currentLocation,
-                                    slotId: currentSlotId 
-                                }));
+                            // Only request fresh data if this is a state change, not initial load
+                            // On initial load, the server already sent rankings via setLocation
+                            if (previousActiveSlotId !== null) {
+                                const now = Date.now();
+                                if (now - lastRequestTime > REQUEST_DEBOUNCE_MS) {
+                                    lastRequestTime = now;
+                                    ws.send(JSON.stringify({ 
+                                        type: 'getRankings', 
+                                        location: currentLocation,
+                                        slotId: currentSlotId 
+                                    }));
+                                }
                             }
                         } 
                     }
@@ -892,10 +898,16 @@ function updatePodium(topPlayers, location) {
             slotTabs.appendChild(tab);
         });
         
-        // Auto-load data if slot changed or if this is initial load (previousSlotId was null)
+        // Auto-load data if slot changed (but skip on initial load if we already have data from setLocation)
         if (targetSlotId && (targetSlotId !== previousSlotId || previousSlotId === null)) {
-            console.log('Auto-loading data for slot:', targetSlotId, '(previous:', previousSlotId, ')');
-            loadSlotData(targetSlotId);
+            // On initial load (previousSlotId === null), the server already sent rankings via setLocation.
+            // Only re-request if we don't have data yet or if the slot actually changed.
+            if (previousSlotId === null && allPlayersFull.length > 0) {
+                console.log('Skipping loadSlotData on initial load - already have data for slot:', targetSlotId);
+            } else {
+                console.log('Auto-loading data for slot:', targetSlotId, '(previous:', previousSlotId, ')');
+                loadSlotData(targetSlotId);
+            }
         }
     }
 
@@ -942,11 +954,8 @@ async function loadSlotData(slotId) {
             // This prevents showing empty podium while data loads
             console.log('Loading active slot, showing game running message');
             showGameRunningMessage(true); // Active game
-        } else {
-            // For inactive slots, show appropriate message immediately
-            console.log('Loading inactive slot, showing no players message');
-            showGameRunningMessage(false); // Inactive slot
         }
+        // For inactive slots, don't pre-emptively show "no players" — wait for actual data response
 
         // Request fresh rankings through WebSocket
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -975,10 +984,23 @@ async function loadSlotData(slotId) {
     }
 }
 
+// Loading overlay helpers
+function showLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.add('visible');
+}
+function hideLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.remove('visible');
+}
+
 // Load initial data for a location
 async function loadInitialData(location) {
     try {
         console.log('Loading initial data for location:', location);
+        
+        // Show loading overlay
+        showLoadingOverlay();
         
         // Show loading state
         document.getElementById('currentLocation').textContent = 'Loading...';
@@ -996,8 +1018,12 @@ async function loadInitialData(location) {
 
         // Update location display
         document.getElementById('currentLocation').textContent = location;
+        
+        // Hide loading overlay after a short delay to let data render
+        setTimeout(() => hideLoadingOverlay(), 600);
     } catch (error) {
         console.error('Error loading initial data:', error);
+        hideLoadingOverlay();
         document.getElementById('currentLocation').textContent = location;
         // Let the game status logic handle the display
         hideLeaderboardComponents();
@@ -1140,6 +1166,9 @@ function isPlayerInTop10(player, players) {
 async function updateDashboard(players, location, updatedPlayer = null) {
     console.log('Updating dashboard with players:', players.length);
     
+    // Hide loading overlay once data arrives
+    hideLoadingOverlay();
+    
     if (location !== currentLocation) {
         console.log('Location mismatch, skipping update');
         return;
@@ -1242,6 +1271,9 @@ function checkTop10Changes(newTop10) {
 let previousGameActive = null; // Track previous game active state
 
 function updateGameStatus(status) {
+    // Hide loading overlay once game status is known
+    hideLoadingOverlay();
+    
     const gameStatusDiv = document.getElementById('gameStatus');
     const gameStatusMessage = document.getElementById('gameStatusMessage');
     const lastGameInfo = document.getElementById('lastGameInfo');

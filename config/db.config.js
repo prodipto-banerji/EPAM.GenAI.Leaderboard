@@ -5,7 +5,7 @@
 module.exports = {
     // SQL Server connection string (set this to use SQL Server)
     // Example: "Server=myserver.database.windows.net;Database=leaderboard;User Id=admin;Password=secret;Encrypt=true;TrustServerCertificate=true;"
-    connectionString: process.env.SQL_CONNECTION_STRING || '',
+    connectionString: 'Server=tcp:game.database.windows.net,1433;Initial Catalog=free-sql-db-9858477;Persist Security Info=False;User ID=somnath;Password=Somu@422;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;',
 
     // SQLite configuration (used when connectionString is empty)
     sqlite: {

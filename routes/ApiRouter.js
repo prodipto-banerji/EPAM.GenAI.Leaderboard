@@ -66,18 +66,20 @@ class ApiRouter {
             try {
                 const result = await this.databaseService.addOrUpdatePlayer(req.body);
                 
-                // First, broadcast a player update event
-                await this.webSocketService.broadcast(JSON.stringify({
+                // Broadcast a player update event to the specific location only
+                await this.webSocketService.broadcastToLocation(JSON.stringify({
                     type: 'playerUpdate',
                     location: req.body.location
-                }));
+                }), req.body.location);
 
-                // Then broadcast updated rankings
+                // Then broadcast updated rankings (already location-specific)
                 await this.webSocketService.broadcastRankings(req.body.location);
 
-                // Also broadcast updated game state to refresh slot data
+                // Also broadcast updated game state to refresh slot data (location-specific)
                 const activeSlot = await this.databaseService.getActiveSlot(req.body.location);
                 const slots = await this.databaseService.getSlotsForLocation(req.body.location);
+                // If no active slot, fall back to the most recent slot
+                const fallbackSlotId = !activeSlot && slots.length > 0 ? slots[0].id : null;
                 await this.webSocketService.broadcastGameState({
                     active: !!activeSlot,
                     slotName: activeSlot?.name,
@@ -85,8 +87,8 @@ class ApiRouter {
                         `Game Session "${activeSlot.name}" is active!` : 
                         'Waiting for game session to start...',
                     slots: slots,
-                    activeSlotId: activeSlot?.id
-                });
+                    activeSlotId: activeSlot?.id || fallbackSlotId
+                }, req.body.location);
 
                 res.json({ 
                     status: 'success', 
