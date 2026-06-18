@@ -4,6 +4,7 @@ const WebSocket = require('ws');
 class WebSocketService {
     constructor(server, databaseService, ranker) {
         this.clients = new Map();
+        this.sseClients = new Map(); // SSE clients: Map<response, location>
         this.databaseService = databaseService;
         this.ranker = ranker;
         this.initialize(server);
@@ -156,23 +157,56 @@ class WebSocketService {
         return this.clients.get(ws);
     }
 
+    // SSE client management
+    addSSEClient(res, location) {
+        this.sseClients.set(res, location);
+        console.log(`SSE client added for location: ${location}. Total SSE clients: ${this.sseClients.size}`);
+    }
+
+    removeSSEClient(res) {
+        const location = this.sseClients.get(res);
+        this.sseClients.delete(res);
+        console.log(`SSE client removed. Was location: ${location}. Remaining SSE clients: ${this.sseClients.size}`);
+    }
+
+    // Send to SSE clients for a specific location
+    sendToSSEClients(data, location) {
+        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+        const eventType = parsed.type || 'message';
+        const payload = `event: ${eventType}\ndata: ${JSON.stringify(parsed)}\n\n`;
+        
+        this.sseClients.forEach((clientLocation, res) => {
+            if (!location || clientLocation === location) {
+                try {
+                    res.write(payload);
+                } catch (e) {
+                    // Client disconnected, will be cleaned up on 'close'
+                }
+            }
+        });
+    }
+
     // Broadcast methods
     broadcast(message) {
-        console.log('Broadcasting message:', typeof message === 'string' ? message : JSON.stringify(message));
+        console.log('Broadcasting message to all');
         this.wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
                 this.sendToClient(client, message);
             }
         });
+        // Also send to all SSE clients
+        this.sendToSSEClients(message, null);
     }
 
     broadcastToLocation(message, location) {
-        console.log(`Broadcasting to location ${location}:`, typeof message === 'string' ? message : JSON.stringify(message));
+        console.log(`Broadcasting to location ${location}`);
         this.wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN && this.getClientLocation(client) === location) {
                 this.sendToClient(client, message);
             }
         });
+        // Also send to SSE clients for this location
+        this.sendToSSEClients(message, location);
     }
 
     sendToClient(ws, message) {

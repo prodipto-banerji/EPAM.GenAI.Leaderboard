@@ -195,6 +195,63 @@ class ApiRouter {
                 });
             }
         });
+
+        // SSE endpoint for scalable dashboard streaming (no WebSocket needed)
+        // Supports 500+ concurrent viewers efficiently via HTTP
+        this.router.get('/stream/:location', (req, res) => {
+            const location = req.params.location;
+            
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no' // Disable nginx buffering
+            });
+
+            // Send initial heartbeat
+            res.write(': connected\n\n');
+
+            // Register this SSE client
+            this.webSocketService.addSSEClient(res, location);
+
+            // Keepalive every 20 seconds to prevent proxy timeouts
+            const keepalive = setInterval(() => {
+                res.write(': keepalive\n\n');
+            }, 20000);
+
+            // Send initial game status immediately
+            this.databaseService.getSlotsForLocation(location).then(async (slots) => {
+                const activeSlot = await this.databaseService.getActiveSlot(location);
+                const lastSlotId = !activeSlot && slots.length > 0 ? slots[0].id : null;
+                const data = {
+                    type: 'gameStatus',
+                    status: {
+                        active: !!activeSlot,
+                        slotName: activeSlot?.name,
+                        message: activeSlot ? 
+                            `Game Session "${activeSlot.name}" is active!` : 
+                            'Waiting for game session to start...',
+                        slots: slots,
+                        activeSlotId: activeSlot?.id || lastSlotId,
+                        hasSlots: slots.length > 0
+                    }
+                };
+                res.write(`event: gameStatus\ndata: ${JSON.stringify(data)}\n\n`);
+
+                // Also send current rankings
+                const slotId = activeSlot?.id || lastSlotId;
+                if (slotId) {
+                    const players = await this.databaseService.getPlayersForSlot(slotId, location);
+                    res.write(`event: rankings\ndata: ${JSON.stringify({ type: 'rankings', location, players, slotId })}\n\n`);
+                }
+            }).catch(err => console.error('SSE initial data error:', err));
+
+            // Cleanup on disconnect
+            req.on('close', () => {
+                clearInterval(keepalive);
+                this.webSocketService.removeSSEClient(res);
+            });
+        });
     }
 
     getRouter() {

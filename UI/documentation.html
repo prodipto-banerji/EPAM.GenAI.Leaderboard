@@ -81,12 +81,331 @@
 <body>
     <div class="header">
         <div class="container">
-            <h1>EPAM GenAI Leaderboard API Documentation</h1>
-            <p>API documentation for interacting with the EPAM GenAI Leaderboard system</p>
+            <h1>EPAM GenAI Leaderboard — Integration & API Documentation</h1>
+            <p>Everything your game application needs to submit scores and integrate with the leaderboard system</p>
         </div>
     </div>
     <div class="container">
-        <h2>Admin Panel</h2>
+        <!-- INTEGRATION GUIDE FOR GAME APPLICATIONS -->
+        <h2>🎮 Game Application Integration Guide</h2>
+        <p style="font-size:1.1rem; color:#4a5568; margin-bottom:1.5rem;">
+            This section explains how your game application should integrate with the Leaderboard API to submit player scores.
+        </p>
+
+        <div style="background:#EBF8FF; border-left:4px solid #4299E1; padding:1.5rem; border-radius:8px; margin-bottom:2rem;">
+            <h3 style="margin-top:0; color:#2B6CB0;">Quick Summary</h3>
+            <ol style="margin-bottom:0;">
+                <li><strong>Poll for active slot:</strong> Keep calling <code>GET /api/slots/active/:location</code> every 5–10 seconds until a slot is active</li>
+                <li><strong>Optionally:</strong> Check if player email has already played in this slot</li>
+                <li><strong>Player plays the game</strong></li>
+                <li><strong>After game ends:</strong> Submit the score via <code>POST /api/player</code></li>
+            </ol>
+            <p style="margin-bottom:0; margin-top:1rem;"><strong>Base URL:</strong> <code>https://epam-genai-dashboard.azurewebsites.net</code></p>
+        </div>
+
+        <div style="background:#F0FFF4; border-left:4px solid #48BB78; padding:1.5rem; border-radius:8px; margin-bottom:2rem;">
+            <h3 style="margin-top:0; color:#276749;">⏱️ Grace Period</h3>
+            <p style="margin-bottom:0;">Scores are accepted for up to <strong>5 minutes after a slot is closed</strong>. If a player is mid-game when the admin closes the slot, their score will still be accepted. No special handling needed from the game app — just submit normally.</p>
+        </div>
+
+        <!-- STEP-BY-STEP FLOW -->
+        <h3>Step-by-Step Integration Flow</h3>
+
+        <div style="background:#2d3748; color:#e2e8f0; padding:1.5rem; border-radius:8px; margin-bottom:1.5rem; overflow-x:auto;">
+            <pre style="margin:0; color:#e2e8f0;"><code>
+┌─────────────────┐         ┌──────────────────────────┐         ┌─────────────────┐
+│   Game App      │         │   Leaderboard API        │         │   Dashboard     │
+└────────┬────────┘         └────────────┬─────────────┘         └────────┬────────┘
+         │                               │                                │
+         │  1. GET /api/slots/active/:loc │  (poll every 5-10s)           │
+         │──────────────────────────────►│                                │
+         │◄──────────────────────────────│ {active: false}               │
+         │          ...wait 5s...        │                                │
+         │──────────────────────────────►│                                │
+         │◄──────────────────────────────│ {active: true, slot}  ✓ START │
+         │                               │                                │
+         │  2. POST /api/check-email     │                                │
+         │──────────────────────────────►│                                │
+         │◄──────────────────────────────│ {hasPlayed: true/false}        │
+         │                               │                                │
+         │      [Player plays game]      │                                │
+         │                               │                                │
+         │  3. POST /api/player          │                                │
+         │──────────────────────────────►│                                │
+         │◄──────────────────────────────│ {status: "success"}            │
+         │                               │                                │
+         │                               │  4. Broadcasts to Dashboard    │
+         │                               │───────────────────────────────►│
+         │                               │                                │
+</code></pre>
+        </div>
+
+        <!-- STEP 1 -->
+        <h3>Step 1: Poll to check if a game slot is active</h3>
+        <p>The game app should <strong>poll</strong> this endpoint to know when the admin starts a slot. Poll every 5–10 seconds until <code>active === true</code>, then allow the player to start.</p>
+        <div style="background:#f7fafc; padding:1rem; border-radius:8px; margin-bottom:1rem; border:1px solid #e2e8f0;">
+            <pre style="margin:0;"><code>GET /api/slots/active/{location}
+
+// Example: GET /api/slots/active/Hyderabad
+
+// Response when slot is active:
+{
+  "status": "success",
+  "active": true,
+  "slot": {
+    "id": 3,
+    "name": "Round 1",
+    "status": "active",
+    "location": "Hyderabad",
+    "level": "simple",
+    "start_time": "2026-06-16 10:00:00"
+  }
+}
+
+// Response when NO slot is active:
+{
+  "status": "success",
+  "active": false,
+  "slot": null
+}
+</code></pre>
+        </div>
+
+        <h4>Polling Example (JavaScript)</h4>
+        <div style="background:#2d3748; color:#e2e8f0; padding:1.5rem; border-radius:8px; margin-bottom:1.5rem; overflow-x:auto;">
+            <pre style="margin:0; color:#e2e8f0;"><code>// Poll every 5 seconds until a slot becomes active
+function waitForActiveSlot(location, onSlotActive) {
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/slots/active/${location}`);
+      const data = await res.json();
+
+      if (data.active) {
+        clearInterval(interval);
+        onSlotActive(data.slot); // Slot is active — start the game
+      }
+    } catch (err) {
+      console.error('Polling error:', err);
+    }
+  }, 5000); // Poll every 5 seconds
+
+  return interval; // Return so you can clearInterval() if user navigates away
+}
+
+// Usage
+waitForActiveSlot('Hyderabad', (slot) => {
+  console.log('Game started! Slot:', slot.name, 'Level:', slot.level);
+  startGame(slot.level); // Your game logic
+});
+</code></pre>
+        </div>
+
+        <p><strong>Game app logic:</strong> While <code>active === false</code>, show a waiting screen like "No game session running. Please wait for the admin to start a session." Once <code>active === true</code>, allow the player to begin.</p>
+
+        <!-- STEP 2 -->
+        <h3>Step 2: Check if player has already played (Optional)</h3>
+        <p>Prevents duplicate plays within the same slot. Call this before starting the quiz.</p>
+        <div style="background:#f7fafc; padding:1rem; border-radius:8px; margin-bottom:1rem; border:1px solid #e2e8f0;">
+            <pre style="margin:0;"><code>POST /api/check-email
+Content-Type: application/json
+
+{
+  "email": "player@epam.com",
+  "location": "Hyderabad"
+}
+
+// Response when player has NOT played:
+{
+  "status": "success",
+  "hasPlayed": false,
+  "message": "Player has not played in this slot",
+  "activeSlot": { "id": 3, "name": "Round 1", ... },
+  "playerData": null
+}
+
+// Response when player HAS already played:
+{
+  "status": "success",
+  "hasPlayed": true,
+  "message": "Player has already played in this slot",
+  "activeSlot": { "id": 3, "name": "Round 1", ... },
+  "playerData": {
+    "name": "John Doe",
+    "email": "player@epam.com",
+    "score": 8,
+    "timetaken": 45000,
+    "displaytime": "00:45"
+  }
+}
+</code></pre>
+        </div>
+        <p><strong>Game app logic:</strong> If <code>hasPlayed === true</code>, show "You have already played in this session. Your score: X"</p>
+
+        <!-- STEP 3 -->
+        <h3>Step 3: Submit player score</h3>
+        <p>After the player finishes the game, submit their score. This is the <strong>most important</strong> API call.</p>
+        <div style="background:#f7fafc; padding:1rem; border-radius:8px; margin-bottom:1rem; border:1px solid #e2e8f0;">
+            <pre style="margin:0;"><code>POST /api/player
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "john.doe@epam.com",
+  "score": 8,
+  "timetaken": 45000,
+  "displaytime": "00:45",
+  "location": "Hyderabad"
+}
+</code></pre>
+        </div>
+
+        <h4>Field Reference</h4>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:1.5rem;">
+            <thead><tr style="background:#f7fafc;">
+                <th style="padding:0.75rem; border:1px solid #e2e8f0; text-align:left;">Field</th>
+                <th style="padding:0.75rem; border:1px solid #e2e8f0; text-align:left;">Type</th>
+                <th style="padding:0.75rem; border:1px solid #e2e8f0; text-align:left;">Required</th>
+                <th style="padding:0.75rem; border:1px solid #e2e8f0; text-align:left;">Description</th>
+            </tr></thead>
+            <tbody>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>name</code></td><td style="padding:0.5rem; border:1px solid #e2e8f0;">string</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">✅ Yes</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">Player's full name</td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>email</code></td><td style="padding:0.5rem; border:1px solid #e2e8f0;">string</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">✅ Yes</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">Player's email (used as unique identifier per slot)</td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>score</code></td><td style="padding:0.5rem; border:1px solid #e2e8f0;">number</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">✅ Yes</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">Number of correct answers (e.g., 8 out of 10)</td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>timetaken</code></td><td style="padding:0.5rem; border:1px solid #e2e8f0;">number</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">✅ Yes</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">Time taken in <strong>milliseconds</strong> (e.g., 45000 = 45 seconds)</td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>displaytime</code></td><td style="padding:0.5rem; border:1px solid #e2e8f0;">string</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">✅ Yes</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">Human-readable time string (e.g., "00:45", "01:30", "12:05")</td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>location</code></td><td style="padding:0.5rem; border:1px solid #e2e8f0;">string</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">✅ Yes</td><td style="padding:0.5rem; border:1px solid #e2e8f0;">Must be one of: Hyderabad, Pune, Chennai, Gurgaon, Bangalore, Coimbatore</td></tr>
+            </tbody>
+        </table>
+
+        <h4>Response</h4>
+        <div style="background:#f7fafc; padding:1rem; border-radius:8px; margin-bottom:1rem; border:1px solid #e2e8f0;">
+            <pre style="margin:0;"><code>// Success - new player added:
+{ "status": "success", "message": "Player added", "updated": true }
+
+// Success - score updated (better than previous):
+{ "status": "success", "message": "Score updated", "updated": true }
+
+// Success - existing score is better (no update):
+{ "status": "success", "message": "Existing score is better", "updated": false }
+
+// Error - no active slot:
+{ "status": "error", "message": "Failed to add player", "error": "No active slot available for this location" }
+</code></pre>
+        </div>
+
+        <div style="background:#FFFBEB; border-left:4px solid #ECC94B; padding:1.5rem; border-radius:8px; margin-bottom:2rem;">
+            <h3 style="margin-top:0; color:#975A16;">⚠️ Important Notes for Game App</h3>
+            <ul style="margin-bottom:0;">
+                <li><strong>Ranking logic:</strong> Players are ranked by highest score first, then by lowest time taken (faster = higher rank for equal scores).</li>
+                <li><strong>Duplicate submissions:</strong> If the same email submits again in the same slot, only the better score is kept.</li>
+                <li><strong>Slot assignment is automatic:</strong> You don't need to pass a <code>slot_id</code>. The API automatically assigns the score to the active slot for that location.</li>
+                <li><strong>5-minute grace period:</strong> Scores are accepted up to 5 minutes after a slot closes. No retry logic needed.</li>
+                <li><strong>No WebSocket needed:</strong> Game apps should only use HTTP POST. WebSockets are for the dashboard display only.</li>
+            </ul>
+        </div>
+
+        <!-- CODE EXAMPLES -->
+        <h3>Code Examples</h3>
+
+        <h4>JavaScript (fetch)</h4>
+        <div style="background:#2d3748; color:#e2e8f0; padding:1.5rem; border-radius:8px; margin-bottom:1.5rem; overflow-x:auto;">
+            <pre style="margin:0; color:#e2e8f0;"><code>// Submit score after game ends
+async function submitScore(playerName, playerEmail, score, timeTakenMs, location) {
+  // Format display time from milliseconds
+  const totalSeconds = Math.floor(timeTakenMs / 1000);
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  const displaytime = `${minutes}:${seconds}`;
+
+  const response = await fetch('https://epam-genai-dashboard.azurewebsites.net/api/player', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: playerName,
+      email: playerEmail,
+      score: score,
+      timetaken: timeTakenMs,
+      displaytime: displaytime,
+      location: location
+    })
+  });
+
+  const result = await response.json();
+  if (result.status === 'success') {
+    console.log('Score submitted:', result.message);
+  } else {
+    console.error('Failed:', result.error);
+  }
+}
+
+// Example usage
+submitScore('John Doe', 'john.doe@epam.com', 8, 45000, 'Hyderabad');
+</code></pre>
+        </div>
+
+        <h4>Python (requests)</h4>
+        <div style="background:#2d3748; color:#e2e8f0; padding:1.5rem; border-radius:8px; margin-bottom:1.5rem; overflow-x:auto;">
+            <pre style="margin:0; color:#e2e8f0;"><code>import requests
+
+def submit_score(name, email, score, time_taken_ms, location):
+    total_seconds = time_taken_ms // 1000
+    displaytime = f"{total_seconds // 60:02d}:{total_seconds % 60:02d}"
+
+    response = requests.post(
+        "https://epam-genai-dashboard.azurewebsites.net/api/player",
+        json={
+            "name": name,
+            "email": email,
+            "score": score,
+            "timetaken": time_taken_ms,
+            "displaytime": displaytime,
+            "location": location
+        }
+    )
+    return response.json()
+
+# Example
+result = submit_score("John Doe", "john.doe@epam.com", 8, 45000, "Hyderabad")
+print(result)
+</code></pre>
+        </div>
+
+        <h4>cURL</h4>
+        <div style="background:#2d3748; color:#e2e8f0; padding:1.5rem; border-radius:8px; margin-bottom:2rem; overflow-x:auto;">
+            <pre style="margin:0; color:#e2e8f0;"><code>curl -X POST https://epam-genai-dashboard.azurewebsites.net/api/player \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "email": "john.doe@epam.com",
+    "score": 8,
+    "timetaken": 45000,
+    "displaytime": "00:45",
+    "location": "Hyderabad"
+  }'
+</code></pre>
+        </div>
+
+        <!-- LOCATIONS -->
+        <h3>Valid Locations</h3>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:2rem;">
+            <thead><tr style="background:#f7fafc;">
+                <th style="padding:0.5rem; border:1px solid #e2e8f0;">Location</th>
+                <th style="padding:0.5rem; border:1px solid #e2e8f0;">Value to use in API</th>
+            </tr></thead>
+            <tbody>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Hyderabad</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>"Hyderabad"</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Pune</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>"Pune"</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Chennai</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>"Chennai"</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Gurgaon</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>"Gurgaon"</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Bangalore</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>"Bangalore"</code></td></tr>
+                <tr><td style="padding:0.5rem; border:1px solid #e2e8f0;">Coimbatore</td><td style="padding:0.5rem; border:1px solid #e2e8f0;"><code>"Coimbatore"</code></td></tr>
+            </tbody>
+        </table>
+
+        <hr style="margin:2rem 0; border:none; border-top:2px solid #e2e8f0;">
+
+        <!-- EXISTING API REFERENCE -->
+        <h2>Admin Panel (Internal Use)</h2>
         <p>Access the admin panel at <code>/admin</code> to manage slots per location.</p>
         <table style="width:100%; border-collapse:collapse; margin-bottom:2rem;">
             <thead><tr style="background:#f7fafc;"><th style="padding:0.5rem; border:1px solid #e2e8f0;">Location</th><th style="padding:0.5rem; border:1px solid #e2e8f0;">Email</th></tr></thead>

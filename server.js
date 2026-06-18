@@ -8,9 +8,9 @@ const Ranker = require('./Model/Ranker');
 const DatabaseService = require('./services/DatabaseService');
 const WebSocketService = require('./services/WebSocketService');
 const ApiRouter = require('./routes/ApiRouter');
+const dbConfig = require('./config/db.config');
 
 // Constants for paths
-const DB_PATH = path.join(__dirname, 'leaderboard.db');
 const UI_PATH = path.join(__dirname, 'UI');
 
 // Initialize Express app and HTTP server
@@ -47,7 +47,7 @@ app.use((req, res, next) => {
 });
 
 // Initialize services
-const databaseService = new DatabaseService(DB_PATH);
+const databaseService = new DatabaseService(dbConfig);
 const ranker = new Ranker();
 const webSocketService = new WebSocketService(server, databaseService, ranker);
 const apiRouter = new ApiRouter(databaseService, webSocketService);
