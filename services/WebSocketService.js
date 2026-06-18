@@ -4,6 +4,7 @@ const WebSocket = require('ws');
 class WebSocketService {
     constructor(server, databaseService, ranker) {
         this.clients = new Map();
+        this.sseClients = new Map(); // SSE clients: Map<response, location>
         this.databaseService = databaseService;
         this.ranker = ranker;
         this.initialize(server);
@@ -16,15 +17,45 @@ class WebSocketService {
         });
 
         this.setupWebSocketHandlers();
+        this.startHeartbeat();
+    }
+
+    // Periodically ping clients and terminate unresponsive ones
+    startHeartbeat() {
+        this.heartbeatInterval = setInterval(() => {
+            this.wss.clients.forEach((ws) => {
+                if (ws.isAlive === false) {
+                    console.log('Terminating unresponsive client');
+                    this.removeClient(ws);
+                    return ws.terminate();
+                }
+                ws.isAlive = false;
+                ws.ping();
+            });
+        }, 30000); // Every 30 seconds
     }
 
     setupWebSocketHandlers() {
         this.wss.on('connection', (ws) => {
             console.log('New client connected');
+            ws.isAlive = true;
+
+            // Handle pong responses from native WebSocket ping
+            ws.on('pong', () => {
+                ws.isAlive = true;
+            });
             
             ws.on('message', async (message) => {
                 try {
                     const data = JSON.parse(message);
+                    
+                    // Handle client-level ping (application-layer keepalive)
+                    if (data.type === 'ping') {
+                        ws.isAlive = true;
+                        this.sendToClient(ws, JSON.stringify({ type: 'pong' }));
+                        return;
+                    }
+                    
                     switch (data.type) {
                         case 'setLocation':
                             this.addClient(ws, data.location);
@@ -66,7 +97,8 @@ class WebSocketService {
                                 this.sendToClient(ws, JSON.stringify({
                                     type: 'rankings',
                                     location: data.location,
-                                    players: players
+                                    players: players,
+                                    slotId: data.slotId
                                 }));
                             } else {
                                 await this.broadcastRankings(data.location);
@@ -126,23 +158,56 @@ class WebSocketService {
         return this.clients.get(ws);
     }
 
+    // SSE client management
+    addSSEClient(res, location) {
+        this.sseClients.set(res, location);
+        console.log(`SSE client added for location: ${location}. Total SSE clients: ${this.sseClients.size}`);
+    }
+
+    removeSSEClient(res) {
+        const location = this.sseClients.get(res);
+        this.sseClients.delete(res);
+        console.log(`SSE client removed. Was location: ${location}. Remaining SSE clients: ${this.sseClients.size}`);
+    }
+
+    // Send to SSE clients for a specific location
+    sendToSSEClients(data, location) {
+        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+        const eventType = parsed.type || 'message';
+        const payload = `event: ${eventType}\ndata: ${JSON.stringify(parsed)}\n\n`;
+        
+        this.sseClients.forEach((clientLocation, res) => {
+            if (!location || clientLocation === location) {
+                try {
+                    res.write(payload);
+                } catch (e) {
+                    // Client disconnected, will be cleaned up on 'close'
+                }
+            }
+        });
+    }
+
     // Broadcast methods
     broadcast(message) {
-        console.log('Broadcasting message:', typeof message === 'string' ? message : JSON.stringify(message));
+        console.log('Broadcasting message to all');
         this.wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
                 this.sendToClient(client, message);
             }
         });
+        // Also send to all SSE clients
+        this.sendToSSEClients(message, null);
     }
 
     broadcastToLocation(message, location) {
-        console.log(`Broadcasting to location ${location}:`, typeof message === 'string' ? message : JSON.stringify(message));
+        console.log(`Broadcasting to location ${location}`);
         this.wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN && this.getClientLocation(client) === location) {
                 this.sendToClient(client, message);
             }
         });
+        // Also send to SSE clients for this location
+        this.sendToSSEClients(message, location);
     }
 
     sendToClient(ws, message) {
@@ -157,11 +222,22 @@ class WebSocketService {
     async broadcastRankings(location) {
         try {
             const activeSlot = await this.databaseService.getActiveSlot(location);
-            const players = await this.databaseService.getPlayersForLocation(location, activeSlot?.id);
+            let slotId = activeSlot?.id;
+
+            // If no active slot, use the most recent slot for this location
+            if (!slotId) {
+                const slots = await this.databaseService.getSlotsForLocation(location);
+                if (slots.length > 0) {
+                    slotId = slots[0].id;
+                }
+            }
+
+            const players = await this.databaseService.getPlayersForSlot(slotId, location);
             const message = {
                 type: 'rankings',
                 location: location,
-                players: players
+                players: players,
+                slotId: slotId
             };
             this.broadcastToLocation(JSON.stringify(message), location);
         } catch (error) {
@@ -203,7 +279,7 @@ class WebSocketService {
                 slotName: stoppedSlot.name,
                 message: 'Game session has ended',
                 slots: locationSlots,
-                activeSlotId: null,
+                activeSlotId: stoppedSlot.id,
                 lastSlotInfo: lastSlot
             }, location);
             return stoppedSlot;

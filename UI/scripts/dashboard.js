@@ -39,6 +39,13 @@ const GAME_STATUS_REQUEST_DEBOUNCE_MS = 1000; // 1 second between game status re
 let gameStatusRequestCount = 0;
 let gameStatusResponseCount = 0;
 
+// Reconnection state (outside connectWebSocket to persist across calls)
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+let connectionId = 0; // Incremented on each intentional connect to invalidate stale onclose handlers
+let intentionalClose = false; // Flag to suppress reconnection on intentional disconnect
+let keepaliveInterval = null; // Client-side keepalive ping interval
+
 function selectLocation(location) {
     // Clear current data first
     clearDashboard();
@@ -111,42 +118,53 @@ function clearDashboard() {
 // WebSocket connection management
 function connectWebSocket(location) {
     return new Promise((resolve, reject) => {
-        // Close existing connection if any
+        // Close existing connection if any (mark as intentional so onclose doesn't reconnect)
         if (ws) {
+            intentionalClose = true;
             ws.close();
+            intentionalClose = false;
         }
+
+        // Clear any existing keepalive interval
+        if (keepaliveInterval) {
+            clearInterval(keepaliveInterval);
+            keepaliveInterval = null;
+        }
+
+        // Increment connection ID to invalidate any stale onclose handlers
+        connectionId++;
+        const myConnectionId = connectionId;
 
         // Get the current host and determine WebSocket protocol
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let wsUrl;
-        
-        // Check if we're running locally or on Azure
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            // Local development
-            wsUrl = `${protocol}//${window.location.host}`;
-        } else {
-            // Production - use current host
-            wsUrl = `${protocol}//${window.location.host}`;
-        }
+        const wsUrl = `${protocol}//${window.location.host}`;
         
         console.log('Connecting to WebSocket at:', wsUrl);
         
         // Connect to WebSocket server
         ws = new WebSocket(wsUrl);
-        
-        let reconnectAttempts = 0;
-        const maxReconnectAttempts = 5;
 
         ws.onopen = () => {
             console.log('WebSocket connection established');
-            // Send location and request initial game status
+            // Reset reconnect attempts on successful connection
+            reconnectAttempts = 0;
+            // Send location - server already broadcasts game status in response to setLocation
             ws.send(JSON.stringify({ type: 'setLocation', location }));
-            requestGameStatus(); // Use rate-limited function
+            
+            // Start keepalive ping every 30 seconds to prevent proxy/load-balancer timeouts
+            keepaliveInterval = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000);
+            
             resolve(ws);
         };
 
         ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
+            // Ignore pong responses
+            if (data.type === 'pong') return;
             
             switch (data.type) {
                 case 'rankings':
@@ -183,8 +201,11 @@ function connectWebSocket(location) {
                         updateSlotTabs(data.status.slots, data.status.activeSlotId);
                         
                         // Check if the active slot has changed (game ended) or game status changed
-                        const gameStateChanged = (previousActiveSlotId && previousActiveSlotId !== data.status.activeSlotId) ||
-                                               (wasGameActive !== data.status.active);
+                        // Only consider it a "state change" if we had a previous state (not initial load)
+                        const gameStateChanged = previousActiveSlotId !== null && (
+                            (previousActiveSlotId !== data.status.activeSlotId) ||
+                            (wasGameActive !== data.status.active)
+                        );
                         
                         // Add debouncing to prevent rapid state change processing
                         const now = Date.now();
@@ -248,15 +269,18 @@ function connectWebSocket(location) {
                         else if (data.status.activeSlotId) {
                             currentSlotId = data.status.activeSlotId;
                             
-                            // Still request fresh data to ensure we're up to date
-                            const now = Date.now();
-                            if (now - lastRequestTime > REQUEST_DEBOUNCE_MS) {
-                                lastRequestTime = now;
-                                ws.send(JSON.stringify({ 
-                                    type: 'getRankings', 
-                                    location: currentLocation,
-                                    slotId: currentSlotId 
-                                }));
+                            // Only request fresh data if this is a state change, not initial load
+                            // On initial load, the server already sent rankings via setLocation
+                            if (previousActiveSlotId !== null) {
+                                const now = Date.now();
+                                if (now - lastRequestTime > REQUEST_DEBOUNCE_MS) {
+                                    lastRequestTime = now;
+                                    ws.send(JSON.stringify({ 
+                                        type: 'getRankings', 
+                                        location: currentLocation,
+                                        slotId: currentSlotId 
+                                    }));
+                                }
                             }
                         } 
                     }
@@ -284,15 +308,34 @@ function connectWebSocket(location) {
 
         ws.onclose = () => {
             console.log('WebSocket connection closed');
-            // Attempt to reconnect after 5 seconds
-            setTimeout(() => {
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    console.log(`Attempting to reconnect... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
-                    reconnectAttempts++;
-                    connectWebSocket(location)
-                        .catch(error => console.error('Reconnection failed:', error));
-                }
-            }, 5000);
+            
+            // Clear keepalive interval
+            if (keepaliveInterval) {
+                clearInterval(keepaliveInterval);
+                keepaliveInterval = null;
+            }
+
+            // Don't reconnect if this was an intentional close or if this is a stale handler
+            if (intentionalClose || myConnectionId !== connectionId) {
+                console.log('Skipping reconnection (intentional close or stale handler)');
+                return;
+            }
+
+            // Attempt to reconnect with exponential backoff
+            if (reconnectAttempts < maxReconnectAttempts) {
+                const delay = Math.min(5000 * Math.pow(1.5, reconnectAttempts), 30000);
+                console.log(`Attempting to reconnect in ${Math.round(delay/1000)}s... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+                reconnectAttempts++;
+                setTimeout(() => {
+                    // Check again if this connection ID is still current
+                    if (myConnectionId === connectionId) {
+                        connectWebSocket(location)
+                            .catch(error => console.error('Reconnection failed:', error));
+                    }
+                }, delay);
+            } else {
+                console.log('Max reconnection attempts reached. Please refresh the page.');
+            }
         };
     });
 }
@@ -855,10 +898,16 @@ function updatePodium(topPlayers, location) {
             slotTabs.appendChild(tab);
         });
         
-        // Auto-load data if slot changed or if this is initial load (previousSlotId was null)
+        // Auto-load data if slot changed (but skip on initial load if we already have data from setLocation)
         if (targetSlotId && (targetSlotId !== previousSlotId || previousSlotId === null)) {
-            console.log('Auto-loading data for slot:', targetSlotId, '(previous:', previousSlotId, ')');
-            loadSlotData(targetSlotId);
+            // On initial load (previousSlotId === null), the server already sent rankings via setLocation.
+            // Only re-request if we don't have data yet or if the slot actually changed.
+            if (previousSlotId === null && allPlayersFull.length > 0) {
+                console.log('Skipping loadSlotData on initial load - already have data for slot:', targetSlotId);
+            } else {
+                console.log('Auto-loading data for slot:', targetSlotId, '(previous:', previousSlotId, ')');
+                loadSlotData(targetSlotId);
+            }
         }
     }
 
@@ -905,11 +954,8 @@ async function loadSlotData(slotId) {
             // This prevents showing empty podium while data loads
             console.log('Loading active slot, showing game running message');
             showGameRunningMessage(true); // Active game
-        } else {
-            // For inactive slots, show appropriate message immediately
-            console.log('Loading inactive slot, showing no players message');
-            showGameRunningMessage(false); // Inactive slot
         }
+        // For inactive slots, don't pre-emptively show "no players" — wait for actual data response
 
         // Request fresh rankings through WebSocket
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -938,10 +984,23 @@ async function loadSlotData(slotId) {
     }
 }
 
+// Loading overlay helpers
+function showLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.add('visible');
+}
+function hideLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.remove('visible');
+}
+
 // Load initial data for a location
 async function loadInitialData(location) {
     try {
         console.log('Loading initial data for location:', location);
+        
+        // Show loading overlay
+        showLoadingOverlay();
         
         // Show loading state
         document.getElementById('currentLocation').textContent = 'Loading...';
@@ -959,8 +1018,12 @@ async function loadInitialData(location) {
 
         // Update location display
         document.getElementById('currentLocation').textContent = location;
+        
+        // Hide loading overlay after a short delay to let data render
+        setTimeout(() => hideLoadingOverlay(), 600);
     } catch (error) {
         console.error('Error loading initial data:', error);
+        hideLoadingOverlay();
         document.getElementById('currentLocation').textContent = location;
         // Let the game status logic handle the display
         hideLeaderboardComponents();
@@ -1103,6 +1166,9 @@ function isPlayerInTop10(player, players) {
 async function updateDashboard(players, location, updatedPlayer = null) {
     console.log('Updating dashboard with players:', players.length);
     
+    // Hide loading overlay once data arrives
+    hideLoadingOverlay();
+    
     if (location !== currentLocation) {
         console.log('Location mismatch, skipping update');
         return;
@@ -1205,6 +1271,9 @@ function checkTop10Changes(newTop10) {
 let previousGameActive = null; // Track previous game active state
 
 function updateGameStatus(status) {
+    // Hide loading overlay once game status is known
+    hideLoadingOverlay();
+    
     const gameStatusDiv = document.getElementById('gameStatus');
     const gameStatusMessage = document.getElementById('gameStatusMessage');
     const lastGameInfo = document.getElementById('lastGameInfo');
